@@ -1,0 +1,52 @@
+name: Lint and Validate To-Fusion Skills
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Check Python Syntax & Compilation
+        run: |
+          python -m compileall skills/ tools/
+
+      - name: Verify Skills Structure & Manifest
+        run: |
+          python -c '
+          import json, os, sys
+          with open("skills_manifest.json") as f:
+              m = json.load(f)
+          assert "skills" in m, "Manifest missing skills block"
+          for name, data in m["skills"].items():
+              assert os.path.exists(data["entrypoint"]), f"Missing entrypoint {data[\"entrypoint\"]}"
+              for s in data["scripts"]:
+                  assert os.path.exists(s), f"Missing script {s}"
+          print("Skills manifest validation passed!")
+          '
+
+      - name: Test Change Logger CLI
+        run: |
+          python tools/log_change.py --help

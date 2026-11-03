@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "to-fusion-skill-sets"
+version = "1.0.0"
+description = "Autonomous Autodesk Fusion 360 parametric CAD skills and rulesets for AI agents (Antigravity, Claude, Cursor)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Kamish" }
+]
+keywords = [
+    "fusion-360",
+    "cad",
+    "ai-agent",
+    "antigravity",
+    "claude",
+    "skills",
+    "reverse-engineering",
+    "computer-vision",
+    "mcp"
+]
+dependencies = [
+    "numpy>=2.0.0",
+    "scipy>=1.15.0",
+    "trimesh>=5.0.0",
+    "shapely>=2.0.0",
+    "opencv-python>=4.10.0",
+    "ezdxf>=1.4.0",
+    "fast-simplification>=0.2.0",
+    "mapbox-earcut>=2.1.0",
+    "pillow>=11.0.0",
+    "networkx>=3.4.0",
+    "rtree>=1.4.0",
+    "scikit-image>=0.25.0",
+    "lxml>=6.0.0",
+    "fonttools>=4.60.0",
+    "imageio>=2.36.0",
+    "tifffile>=2025.1.1"
+]
+
+[project.scripts]
+inspect-3mf = "skills.3mf_to_fusion.scripts.inspect_3mf:main"
+process-media = "skills.media_to_fusion.scripts.process_media:main"
+scaffold-cad = "skills.text_to_fusion.scripts.scaffold_text_model:main"
+log-cad-change = "tools.log_change:main"

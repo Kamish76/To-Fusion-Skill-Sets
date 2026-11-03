@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "to-fusion-skill-sets",
+  "version": "1.0.0",
+  "description": "Autonomous Autodesk Fusion 360 parametric CAD engineering skills and rulesets for AI agents (Antigravity, Claude, Cursor)",
+  "author": "Kamish",
+  "license": "MIT",
+  "skills": {
+    "3mf-to-fusion": {
+      "version": "1.0.0",
+      "name": "3mf-to-fusion",
+      "description": "Advanced CAD reverse-engineering engine for 3MF and STL files. Slices, dices, and mathematically inspects raw meshes (cross sections, true circumscribed circle radii, obround slots, hex pockets, turned profiles, and pattern arrays), and synthesizes 100% native, editable parametric BRep solid bodies in Autodesk Fusion 360 via the Fusion 360 MCP server.",
+      "entrypoint": "skills/3mf-to-fusion/SKILL.md",
+      "scripts": ["skills/3mf-to-fusion/scripts/inspect_3mf.py"],
+      "dependencies": [
+        "numpy>=2.0.0",
+        "trimesh>=5.0.0",
+        "shapely>=2.0.0",
+        "scipy>=1.15.0",
+        "ezdxf>=1.4.0",
+        "fast_simplification>=0.2.0",
+        "mapbox_earcut>=2.1.0"
+      ]
+    },
+    "media-to-fusion": {
+      "version": "1.0.0",
+      "name": "media-to-fusion",
+      "description": "Converts images, multi-angle photo sets, technical drawings, or videos of mechanical/physical objects into functional, parametric 3D CAD models and assemblies in Fusion 360 via computer vision metrology, kinematic synthesis, and the Fusion 360 MCP server.",
+      "entrypoint": "skills/media-to-fusion/SKILL.md",
+      "scripts": ["skills/media-to-fusion/scripts/process_media.py"],
+      "dependencies": [
+        "opencv-python>=4.10.0",
+        "numpy>=2.0.0",
+        "ezdxf>=1.4.0"
+      ]
+    },
+    "text-to-fusion": {
+      "version": "1.0.0",
+      "name": "text-to-fusion",
+      "description": "Translates natural language descriptions, mechanical adjustments, fastener BOM requests, exploded assembly diagrams, and kinematic animations into 100% native, parametric 3D CAD models and assemblies in Autodesk Fusion 360 via the Fusion 360 MCP server.",
+      "entrypoint": "skills/text-to-fusion/SKILL.md",
+      "scripts": ["skills/text-to-fusion/scripts/scaffold_text_model.py"],
+      "dependencies": []
+    }
+  },
+  "rulesets": [
+    "rules/fusion-autonomous-cad-rules.md",
+    "rules/model-isolation-rules.md"
+  ]
+}

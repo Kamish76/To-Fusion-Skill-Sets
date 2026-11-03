@@ -1,0 +1,33 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor and IDE configurations
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary CAD extractions and model scratch workspaces
+extracted_cad/
+media_workspace/
+workspace/
+temp/
+*.log
+
+# Build / packaging artifacts
+build/
+dist/
+*.egg-info/
