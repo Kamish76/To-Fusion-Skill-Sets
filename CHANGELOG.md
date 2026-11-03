@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **[core]**: Initialized public git repository with multi-agent support (Antigravity, Claude, Cursor)
 - Staging area for upcoming changes, improvements, and fixes.
 
 ---
