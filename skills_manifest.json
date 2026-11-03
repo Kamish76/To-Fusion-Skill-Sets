@@ -2,6 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "name": "to-fusion-skill-sets",
   "version": "1.0.0",
+  "watermark": "kms-P",
+  "protection": {
+    "policy": "strict-branching",
+    "base": "dev",
+    "target": "dev",
+    "workflow": "pr"
+  },
   "description": "Autonomous Autodesk Fusion 360 parametric CAD engineering skills and rulesets for AI agents (Antigravity, Claude, Cursor)",
   "author": "Kamish",
   "license": "MIT",

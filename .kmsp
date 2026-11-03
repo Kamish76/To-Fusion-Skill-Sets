@@ -1,0 +1,7 @@
+{
+  "watermark": "kms-P",
+  "policy": "strict-branching",
+  "base": "dev",
+  "target": "dev",
+  "workflow": "pr"
+}
