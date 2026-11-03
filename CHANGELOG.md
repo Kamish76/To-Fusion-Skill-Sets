@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+### Changed
+- **[3mf-to-fusion]**: Establish In-CAD Mesh-First Staging & Multi-Perspective Metrology protocol with marketing photo ban and ghost overlay verification
 ### Added
 - **[core]**: Initialized public git repository with multi-agent support (Antigravity, Claude, Cursor)
 - Staging area for upcoming changes, improvements, and fixes.

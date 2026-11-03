@@ -210,4 +210,41 @@ def create_counterbore_hole(comp, base_body, cx_mm, cy_mm, hole_dia_mm, cbore_di
     cut2_in.setDistanceExtent(False, mm(cbore_depth_mm))
     cut2_in.participantBodies = [base_body]
     return extrudes.add(cut2_in)
+
+---
+
+## 8. In-CAD Reference Mesh Staging, Ghost Overlay & Handover Assertion
+
+```python
+def stage_reference_mesh(root, stl_path):
+    """Imports raw STL into an isolated Reference_Meshes_Staging component."""
+    ref_occ = root.occurrences.addNewComponent(adsk.core.Matrix3D.create())
+    ref_comp = ref_occ.component
+    ref_comp.name = "Reference_Meshes_Staging"
+    
+    base_feat = ref_comp.features.baseFeatures.add()
+    base_feat.startEdit()
+    mesh_bodies = ref_comp.meshBodies.add(
+        stl_path, 
+        adsk.fusion.MeshUnits.MillimeterMeshUnit, 
+        base_feat
+    )
+    base_feat.finishEdit()
+    return ref_occ, ref_comp
+
+def apply_ghost_overlay(ref_occ, opacity=0.5):
+    """Sets a translucent opacity override on the reference mesh occurrence for visual overlay."""
+    ref_occ.opacity = opacity
+
+def handover_and_assert_timeline(comp, ref_occ):
+    """Deletes the staging reference mesh and asserts pure parametric BRep solid bodies."""
+    if ref_occ:
+        ref_occ.deleteMe()
+        
+    assert comp.bRepBodies.count > 0, "No solid bodies produced!"
+    assert comp.meshBodies.count == 0, "Forbidden MeshBody detected in component!"
+    assert comp.sketches.count > 0, "No sketches found in timeline!"
+    print("✅ Parametric handover verified: pure BRep solid bodies with clean timeline history.")
+```
+
 ```
