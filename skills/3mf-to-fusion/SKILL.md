@@ -1,6 +1,6 @@
 ---
 name: 3mf-to-fusion
-description: Advanced CAD reverse-engineering engine for 3MF and STL files. Stages raw meshes in-CAD for multi-perspective inspection, slices and dices geometry (cross sections, true circumscribed circle radii, obround slots, hex pockets, turned profiles, pattern arrays), and synthesizes 100% native, editable parametric BRep solid bodies in Autodesk Fusion 360 via the Fusion 360 MCP server with translucent ghost overlay verification.
+description: Advanced CAD reverse-engineering engine for 3MF and STL files. Extracts ground-truth STLs, stages raw meshes in-CAD for multi-perspective metrology, slices and mathematically analyzes geometry (cross sections, true circumscribed circle radii, obround slots, hex pockets, turned profiles, pattern arrays), and synthesizes 100% native, editable parametric BRep solid bodies in Autodesk Fusion 360 via the Fusion 360 MCP server with translucent ghost overlay verification.
 ---
 
 # 3MF / STL to Fusion 360 Analytical Reverse-Engineering Skill
@@ -53,9 +53,52 @@ Before processing files, verify that Autodesk Fusion 360 and its MCP server are 
 
 ---
 
-## Phase 1: In-CAD Mesh Staging & Multi-Perspective Capture (Mandatory)
+## Phase 1: Deep Extraction & Mathematical Classification (`inspect_3mf.py`)
 
-Before writing any solid reconstruction code or guessing dimensions, import the extracted raw STL meshes directly into Autodesk Fusion 360 for in-situ visualization and metrology.
+For `.3mf` archives, raw `.stl` files do not exist until unpacked. Run the deep extraction and metrology engine first into the model's isolated workspace.
+
+> [!IMPORTANT]
+> **Workspace Isolation Rule**: Never output extraction files into the main repo root (e.g. `./extracted_cad` is forbidden). Always ensure a dedicated model folder exists under `models/<NN>_<Model_Name>/` (scaffold with `scaffold_text_model.py "<Model_Name>"` if new), and route all slice/dice outputs into `models/<NN>_<Model_Name>/workspace/extracted_cad`.
+
+### 1. Execute Extraction & Slicing
+```bash
+python3 <path_to_skills>/3mf-to-fusion/scripts/inspect_3mf.py <path_to_file.3mf_or_stl> --out-dir models/<NN>_<Model_Name>/workspace/extracted_cad
+```
+
+### 2. Read Manifest & Ground-Truth STL Paths
+Read `models/<NN>_<Model_Name>/workspace/extracted_cad/manifest.json`. For each part, retrieve its extracted STL path from `part["stl_file"]` (e.g. `models/<NN>_<Model_Name>/workspace/extracted_cad/part_01.stl`).
+
+Classify the archetype:
+- **Type A: Prismatic / Stepped CAD**: Planar base extrusion + pocket cuts + hole arrays.
+- **Type T: Turned / Axisymmetric**: Collinear circular slices along Z axis. Modeled using a single half-profile sketch + 360° `RevolveFeature`.
+- **Type B: Multi-tier Enclosure / Shell**: Stepped construction planes + thin-wall extrusions + shell.
+- **Type C: Organic Freeform Sculpture**: High non-planar curvature ($> 15$ tiers). Immediately alert the user:
+  > *"This part is a continuous organic sculpture without discrete planar faces or prismatic sketches. Reconstructing it using planar sketches will generate a stepped staircase approximation rather than a smooth organic sculpt."*
+
+Present a summary table to the user:
+| Part ID | Archetype | Bounding Box ($X \times Y \times Z\text{ mm}$) | Tiers | Extracted STL Path | Key Primitives / Patterns Detected |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+
+### 3. Metrology Mathematics & Compensation Rules
+1. **Unit Conversion (`cm = mm / 10.0`)**:
+   - Fusion 360's internal database (`adsk.core.ValueInput.createByReal()`) strictly uses **centimeters (`cm`)**.
+   - Define at the top of every script:
+     ```python
+     def mm(val): return adsk.core.ValueInput.createByReal(float(val) / 10.0)
+     ```
+2. **Circumscribed Circle Compensation (Chord Error)**:
+   - STL tessellations approximate circular holes with inscribed polygons whose edges cut inward along chords.
+   - Never use the inner minimum diameter. Always use `radius_mm` from `manifest.json["primitives"]["circles"]` (95th-percentile circumscribed radius) rounded to the nearest $0.05\text{ mm}$.
+3. **Slot / Obround Recognition**:
+   - When loops have two parallel straight lines and two semicircular ends, model them as a seed slot (`sketchLines` + `sketchArcs`) rather than a multi-segment polygon.
+4. **Pattern Recognition (Grid / Polar)**:
+   - When `manifest.json["patterns"]` detects a regular pitch ($\Delta X, \Delta Y$), model **one master seed cutout** and duplicate it using `comp.features.rectangularPatternFeatures`. Do not draw repetitive identical geometry by hand.
+
+---
+
+## Phase 2: In-CAD Mesh-First Staging & Multi-Perspective Metrology (Mandatory)
+
+Before writing any solid reconstruction code or guessing dimensions, import each extracted raw STL mesh directly into Autodesk Fusion 360 for in-situ visual inspection and direct metrology.
 
 ### 1. In-CAD Mesh Staging
 Import the raw STL mesh into an isolated staging component (`Reference_Meshes_Staging`) via `execute_api_script`:
@@ -75,14 +118,14 @@ ref_comp.name = "Reference_Meshes_Staging"
 # 2. Import raw STL mesh as base feature
 base_feat = ref_comp.features.baseFeatures.add()
 base_feat.startEdit()
-mesh_bodies = ref_comp.meshBodies.add(
+mesh_body = ref_comp.meshBodies.add(
     stl_path, 
     adsk.fusion.MeshUnits.MillimeterMeshUnit, 
     base_feat
 )
 base_feat.finishEdit()
 
-print(f"Staged {mesh_bodies.count} mesh bodies in Reference_Meshes_Staging")
+print(f"Staged mesh body '{mesh_body.name}' (total: {ref_comp.meshBodies.count}) in Reference_Meshes_Staging")
 ```
 
 ### 2. Multi-Perspective Visual Capture
@@ -98,16 +141,13 @@ Inspect these captures to visually determine:
 - Mechanical travel limits, guide rails, and pin stops.
 - True primary coordinate datum (e.g. build plate flat face vs. axis of symmetry).
 
----
-
-## Phase 2: In-CAD Metrology & Deep Slice Analysis
-
-Never guess mechanical dimensions or rely on external visual estimates. Combine direct in-CAD API queries with the deep slicing engine.
-
-### 1. In-CAD Direct Mesh Metrology
-Directly query the staged mesh geometry via `execute_api_script`:
+### 3. In-CAD Direct Mesh Metrology
+Directly query the staged mesh geometry via `execute_api_script` to cross-reference dimensions against `manifest.json`:
 - **Bounding Box Extents**:
   ```python
+  # Reacquire staged mesh body from component
+  mesh_body = ref_comp.meshBodies.item(0)
+
   # Note: Fusion 360 API bounding boxes return values in centimeters (cm)
   bbox = mesh_body.boundingBox
   dx_mm = (bbox.maxPoint.x - bbox.minPoint.x) * 10.0
@@ -117,42 +157,6 @@ Directly query the staged mesh geometry via `execute_api_script`:
   ```
 - **Internal Cross-Section Slicing**:
   Create temporary construction planes (`comp.constructionPlanes`) through midpoints and critical heights, then project silhouette or cross-section cut edges to measure internal wall thicknesses, slot widths, and travel stop locations.
-
-### 2. Deep Slicing Engine (`inspect_3mf.py`)
-Run the metrology engine to extract mathematical primitives into the model's isolated workspace:
-
-> [!IMPORTANT]
-> **Workspace Isolation Rule**: Never output extraction files into the main repo root (e.g. `./extracted_cad` is forbidden). Always ensure a dedicated model folder exists under `models/<NN>_<Model_Name>/` (scaffold with `scaffold_text_model.py "<Model_Name>"` if new), and route all slice/dice outputs into `models/<NN>_<Model_Name>/workspace/extracted_cad`.
-
-```bash
-python3 <path_to_skills>/3mf-to-fusion/scripts/inspect_3mf.py <path_to_file.3mf_or_stl> --out-dir models/<NN>_<Model_Name>/workspace/extracted_cad
-```
-
-Read `models/<NN>_<Model_Name>/workspace/extracted_cad/manifest.json` and classify the archetype:
-- **Type A: Prismatic / Stepped CAD**: Planar base extrusion + pocket cuts + hole arrays.
-- **Type T: Turned / Axisymmetric**: Collinear circular slices along Z axis. Modeled using a single half-profile sketch + 360° `RevolveFeature`.
-- **Type B: Multi-tier Enclosure / Shell**: Stepped construction planes + thin-wall extrusions + shell.
-- **Type C: Organic Freeform Sculpture**: High non-planar curvature ($> 15$ tiers). Immediately alert the user:
-  > *"This part is a continuous organic sculpture without discrete planar faces or prismatic sketches. Reconstructing it using planar sketches will generate a stepped staircase approximation rather than a smooth organic sculpt."*
-
-Present a summary table to the user:
-| Part ID | Archetype | Bounding Box ($X \times Y \times Z\text{ mm}$) | Tiers | Key Primitives / Patterns Detected |
-| :--- | :--- | :--- | :--- | :--- |
-
-### 3. Metrology Mathematics & Compensation Rules
-1. **Unit Conversion (`cm = mm / 10.0`)**:
-   - Fusion 360's internal database (`adsk.core.ValueInput.createByReal()`) strictly uses **centimeters (`cm`)**.
-   - Define at the top of every script:
-     ```python
-     def mm(val): return adsk.core.ValueInput.createByReal(float(val) / 10.0)
-     ```
-2. **Circumscribed Circle Compensation (Chord Error)**:
-   - STL tessellations approximate circular holes with inscribed polygons whose edges cut inward along chords.
-   - Never use the inner minimum diameter. Always use `radius_mm` from `manifest.json["primitives"]["circles"]` (95th-percentile circumscribed radius) rounded to the nearest $0.05\text{ mm}$.
-3. **Slot / Obround Recognition**:
-   - When loops have two parallel straight lines and two semicircular ends, model them as a seed slot (`sketchLines` + `sketchArcs`) rather than a multi-segment polygon.
-4. **Pattern Recognition (Grid / Polar)**:
-   - When `manifest.json["patterns"]` detects a regular pitch ($\Delta X, \Delta Y$), model **one master seed cutout** and duplicate it using `comp.features.rectangularPatternFeatures`. Do not draw repetitive identical geometry by hand.
 
 ---
 
@@ -192,11 +196,11 @@ params.add(f"{part_name}_height", mm(height_mm), "mm", "Base height")
 
 To guarantee 1:1 fidelity with the physical mesh without guessing:
 
-1. **Apply Translucent Ghost Override**:
-   Set a 50% opacity override on the staged reference occurrence to create a translucent ghost mesh overlay over the newly reconstructed solid body:
+1. **Apply Translucent Ghost Override on Component**:
+   Set a 50% opacity override on the staged reference **component** (note: `Occurrence` in Fusion 360 does not have an opacity setter; opacity override is set on `Component.opacity`):
    ```python
-   # Apply 50% opacity translucent override to staging occurrence
-   ref_occ.opacity = 0.5
+   # Apply 50% opacity translucent override to staging component
+   ref_comp.opacity = 0.5  # or ref_occ.component.opacity = 0.5
    ```
 
 2. **Multi-Perspective Visual Overlay Inspection**:
@@ -213,25 +217,32 @@ To guarantee 1:1 fidelity with the physical mesh without guessing:
 
 ---
 
-## Phase 5: Clean Timeline Handover & Health Gate
+## Phase 5: Clean Timeline Handover & Full-Tree Health Gate
 
-Once verification passes, clean up the staging component and assert complete timeline integrity:
+Once verification passes, clean up all staging occurrences and assert complete document-wide timeline integrity:
 
-### 1. Clean Staging Removal
-Delete or suppress `Reference_Meshes_Staging` so only pure parametric solid geometry remains in the active design tree:
+### 1. Clean Staging Removal (Multi-Part Safe)
+Delete all staging occurrences across the design so only pure parametric solid geometry remains in the active tree:
 ```python
-# Clean Timeline Handover: Delete staging occurrence
-ref_occ.deleteMe()
+# Clean Timeline Handover: Delete all staging occurrences across the design
+for occ in list(root.occurrences):
+    if "Reference_Meshes_Staging" in occ.component.name:
+        occ.deleteMe()
 ```
 
-### 2. Strict Timeline Assertions
-Assert that the reconstructed component contains native parametric solid bodies and zero mesh bodies:
+### 2. Strict Timeline Assertions (Component & Document-Wide)
+Assert that the reconstructed component contains native parametric solid bodies, and verify zero remaining mesh bodies exist across the entire document tree:
 ```python
-# Assert clean parametric handover
-assert comp.bRepBodies.count > 0, "No solid bodies produced!"
-assert comp.meshBodies.count == 0, "Forbidden MeshBody detected in component!"
+# 1. Component-level assertions
+assert comp.bRepBodies.count > 0, "No solid bodies produced in reconstructed component!"
+assert comp.meshBodies.count == 0, "Forbidden MeshBody detected in reconstructed component!"
 assert comp.sketches.count > 0, "No sketches found in timeline!"
-print("✅ Parametric handover verified: pure BRep solid bodies with clean timeline history.")
+
+# 2. Document-wide assertion: verify zero mesh bodies remaining across entire design
+total_doc_meshes = sum(occ.component.meshBodies.count for occ in root.allOccurrences) + root.meshBodies.count
+assert total_doc_meshes == 0, f"Design tree contains {total_doc_meshes} uncleaned reference mesh bodies!"
+
+print("✅ Parametric handover verified: pure BRep solid bodies with 0 mesh bodies remaining in document.")
 ```
 
 ### 3. Final Model Screenshot

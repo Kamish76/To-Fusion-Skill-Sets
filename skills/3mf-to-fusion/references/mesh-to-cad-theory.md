@@ -78,11 +78,11 @@ Before generating CAD code, classify the part:
 
 ---
 
-## 5. Ghost Reference Overlay Validation
+## 5. Ghost Reference Overlay Validation & Clean Handover
 
 To guarantee 1:1 mathematical fidelity without keeping faceted bodies in the final design:
-1. Import the original mesh into a temporary reference staging occurrence: `Reference_Meshes_Staging`.
-2. Set appearance to semi-transparent ghost overlay (`opacity = 0.5`).
-3. Build the pristine parametric BRep solid inside the main component directly aligned with the staged mesh.
+1. Extract ground-truth STL meshes from the 3MF archive first using `inspect_3mf.py` and import into a temporary reference staging occurrence: `Reference_Meshes_Staging`.
+2. Set appearance to semi-transparent ghost overlay on the component: `ref_comp.opacity = 0.5`.
+3. Build the pristine parametric BRep solid inside the main component directly aligned with the staged mesh coordinates.
 4. Perform multi-perspective visual overlay inspection (`iso-top-right`, `front`, `top`, `right`): the solid body should align with the reference mesh perfectly with nominal clearances on travel stops.
-5. Delete `Reference_Meshes_Staging` before production handover and assert `comp.bRepBodies.count > 0` and `comp.meshBodies.count == 0`.
+5. Delete all staging occurrences across the document before production handover and assert `comp.bRepBodies.count > 0`, `comp.meshBodies.count == 0`, and document-wide zero mesh bodies (`total_doc_meshes == 0`).

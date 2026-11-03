@@ -224,27 +224,31 @@ def stage_reference_mesh(root, stl_path):
     
     base_feat = ref_comp.features.baseFeatures.add()
     base_feat.startEdit()
-    mesh_bodies = ref_comp.meshBodies.add(
+    mesh_body = ref_comp.meshBodies.add(
         stl_path, 
         adsk.fusion.MeshUnits.MillimeterMeshUnit, 
         base_feat
     )
     base_feat.finishEdit()
+    print(f"Staged mesh body '{mesh_body.name}' in {ref_comp.name} (total: {ref_comp.meshBodies.count})")
     return ref_occ, ref_comp
 
-def apply_ghost_overlay(ref_occ, opacity=0.5):
-    """Sets a translucent opacity override on the reference mesh occurrence for visual overlay."""
-    ref_occ.opacity = opacity
+def apply_ghost_overlay(ref_target, opacity=0.5):
+    """Sets a translucent opacity override on the reference component (Component has opacity setter; Occurrence does not)."""
+    comp = getattr(ref_target, "component", ref_target)
+    comp.opacity = opacity
 
-def handover_and_assert_timeline(comp, ref_occ):
-    """Deletes the staging reference mesh and asserts pure parametric BRep solid bodies."""
-    if ref_occ:
-        ref_occ.deleteMe()
+def handover_and_assert_timeline(root, comp):
+    """Deletes all staging reference mesh occurrences across document and asserts pure parametric BRep solid bodies."""
+    for occ in list(root.occurrences):
+        if "Reference_Meshes_Staging" in occ.component.name:
+            occ.deleteMe()
         
-    assert comp.bRepBodies.count > 0, "No solid bodies produced!"
-    assert comp.meshBodies.count == 0, "Forbidden MeshBody detected in component!"
+    assert comp.bRepBodies.count > 0, "No solid bodies produced in reconstructed component!"
+    assert comp.meshBodies.count == 0, "Forbidden MeshBody detected in reconstructed component!"
     assert comp.sketches.count > 0, "No sketches found in timeline!"
-    print("✅ Parametric handover verified: pure BRep solid bodies with clean timeline history.")
-```
 
+    total_doc_meshes = sum(occ.component.meshBodies.count for occ in root.allOccurrences) + root.meshBodies.count
+    assert total_doc_meshes == 0, f"Document tree contains {total_doc_meshes} uncleaned mesh bodies!"
+    print("✅ Parametric handover verified: pure BRep solid bodies with 0 mesh bodies remaining in document.")
 ```
