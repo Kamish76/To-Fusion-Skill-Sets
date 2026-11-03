@@ -23,6 +23,10 @@ try:
     from scipy.spatial import cKDTree
     from shapely.geometry import Polygon, MultiPolygon
 except ImportError as e:
+    repo_root = Path(__file__).resolve().parent.parent.parent.parent
+    venv_py = repo_root / ".venv" / "bin" / "python3"
+    if venv_py.exists() and sys.executable != str(venv_py):
+        os.execv(str(venv_py), [str(venv_py)] + sys.argv)
     sys.stderr.write(
         f"Missing required dependency: {e}\n"
         "Ensure Python dependencies are installed:\n"

@@ -12,14 +12,28 @@ are what the Feature Ledger cites as evidence.
 import argparse
 import json
 import math
+import os
 import sys
 from pathlib import Path
 
-import cv2
-import numpy as np
-import trimesh
-from shapely.geometry import MultiPolygon, Polygon
-from shapely.ops import unary_union
+# Auto-switch to repo virtual environment if dependencies are missing from current python
+try:
+    import cv2
+    import numpy as np
+    import trimesh
+    from shapely.geometry import MultiPolygon, Polygon
+    from shapely.ops import unary_union
+except ImportError as e:
+    repo_root = Path(__file__).resolve().parent.parent.parent.parent
+    venv_py = repo_root / ".venv" / "bin" / "python3"
+    if venv_py.exists() and sys.executable != str(venv_py):
+        os.execv(str(venv_py), [str(venv_py)] + sys.argv)
+    sys.stderr.write(
+        f"Missing required dependency: {e}\n"
+        "Ensure Python dependencies are installed:\n"
+        "  pip install -r requirements.txt (or run within the project virtual environment)\n"
+    )
+    sys.exit(1)
 
 sys.path.insert(0, str(Path(__file__).parent))
 from inspect_3mf import analyze_primitive, fit_circle_circumscribed  # noqa: E402
