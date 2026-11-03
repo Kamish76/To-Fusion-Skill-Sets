@@ -1,3 +1,4 @@
 {"timestamp": "2026-11-03T19:43:07.926367", "skill": "core", "type": "added", "message": "Initialized public git repository with multi-agent support (Antigravity, Claude, Cursor)", "author": "Kamish"}
 {"timestamp": "2026-11-03T21:46:49.301770", "skill": "3mf-to-fusion", "type": "changed", "message": "Establish In-CAD Mesh-First Staging & Multi-Perspective Metrology protocol with marketing photo ban and ghost overlay verification", "author": "Kamish"}
 {"timestamp": "2026-11-03T22:15:17.450148", "skill": "3mf-to-fusion", "type": "fixed", "message": "Fix extraction staging order, single MeshBody binding, component opacity, and multi-part handover cleanup", "author": "Kamish"}
+{"timestamp": "2026-11-04T02:02:53.285329", "skill": "3mf-to-fusion", "type": "changed", "message": "Restructure pipeline into per-part phased feature ledger, batched X/Y/Z section packs, in-CAD isolated staging, and quantitative slice diffs", "author": "Kamish"}

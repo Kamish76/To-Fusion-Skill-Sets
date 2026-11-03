@@ -1,11 +1,24 @@
 ---
 name: 3mf-to-fusion
-description: Advanced CAD reverse-engineering engine for 3MF and STL files. Extracts ground-truth STLs, stages raw meshes in-CAD for multi-perspective metrology, slices and mathematically analyzes geometry (cross sections, true circumscribed circle radii, obround slots, hex pockets, turned profiles, pattern arrays), and synthesizes 100% native, editable parametric BRep solid bodies in Autodesk Fusion 360 via the Fusion 360 MCP server with translucent ghost overlay verification.
+description: Advanced CAD reverse-engineering engine for 3MF and STL files. Extracts ground-truth STLs, performs evidence-first multi-axis sectioning and batched metrology (X/Y/Z section packs, 45° rails, obround slots, guide pins, card bezels), enforces per-part phased feature ledgers, and synthesizes 100% native parametric BRep solid bodies in Autodesk Fusion 360 with quantitative slice-diff and translucent ghost verification.
 ---
 
 # 3MF / STL to Fusion 360 Analytical Reverse-Engineering Skill
 
-When asked to copy, reverse-engineer, or recreate a `.3mf` or `.stl` file in Autodesk Fusion 360, follow this deterministic analytical pipeline.
+When asked to copy, reverse-engineer, or recreate a `.3mf` or `.stl` file in Autodesk Fusion 360, follow this deterministic, evidence-first analytical pipeline.
+
+---
+
+## THE ANTI-PATTERNS (What Was Done Wrong in Past Reconstructions)
+
+Before executing any commands, internalize these fatal anti-patterns to prevent repeating past failures:
+
+1. **Monolithic Bulk Synthesis (Anti-Pattern)**:
+   Attempting to construct all components or an entire complex part simultaneously inside a single script. This invariably causes nuanced mechanical features (continuous 45° knife-edge/dovetail rails, stepped lateral margins, rounded obround slot terminations, and pin offsets) to be oversimplified into basic rectangular cutouts.
+2. **Distant Viewport Telemetry**:
+   Capturing camera screenshots showing all components lined up across the entire build plate. At that distance, sub-millimeter features (such as $\varnothing 2.0\times 0.8\text{ mm}$ guide pins, $1.0\text{ mm}$ slot depths, and $45^\circ$ rail chamfers) render as only 2–3 pixels, making visual inspection and defect detection impossible before coding.
+3. **Premature Completion Claims**:
+   Declaring geometry "complete" before conducting close-up, isolated raw mesh metrology, section-by-section multi-axis verification, and quantitative mesh-diff comparisons.
 
 ---
 
@@ -17,13 +30,13 @@ When asked to copy, reverse-engineer, or recreate a `.3mf` or `.stl` file in Aut
 > 
 > Converting mesh facets directly into BRep creates tens of thousands of planar triangular faces that freeze the viewport, cannot be filleted or chamfered, break downstream CAM/drawings, and destroy all parametric design intent.
 > 
-> **MANDATORY**: Dissect the mesh mathematically ("slice and dice"), extract its 2D cross sections and geometric primitives (slots, circumscribed holes, counterbores, turned profiles, rectangular patterns), and construct **100% native parametric solid bodies** in the Fusion 360 timeline using sketches, driving user parameters, extrusions, revolves, and pattern features.
+> **MANDATORY**: Dissect the mesh mathematically ("slice, dice, and classify"), extract 2D cross sections and geometric primitives (slots, circumscribed holes, counterbores, dovetail rails, rectangular patterns), and construct **100% native parametric solid bodies** in the Fusion 360 timeline using sketches, driving user parameters, extrusions, revolves, sweeps, and pattern features.
 
 ### Mandate 2: Strict Ban on Marketing / Thumbnail Photo Reliance
 > [!CAUTION]
-> **STRICT MANDATE**: *Never infer geometry, mechanisms, or clearances from photos or thumbnail images found inside the 3MF archive. Ground truth is exclusively defined by the STL mesh files.*
+> **STRICT MANDATE**: *Never infer geometry, mechanisms, or clearances from photos or thumbnail images found inside the 3MF archive. Ground truth is exclusively defined by the extracted STL mesh files.*
 > 
-> Embedded 3MF thumbnails and slicer preview images (`Metadata/`, `Auxiliaries/`, `.webp`, `.png`, `.jpg`) frequently depict finished, user-decorated prints with arbitrary cosmetic mods, custom paint, non-standard aftermarket hardware, or deceptive camera lens perspective distortion and internal occlusions. 
+> Embedded 3MF thumbnails and slicer preview images (`Metadata/`, `Auxiliaries/`, `.webp`, `.png`, `.jpg`) frequently depict finished, user-decorated prints with arbitrary cosmetic modifications, custom paint, non-standard aftermarket hardware, or deceptive camera lens perspective distortion and internal occlusions. 
 > 
 > Inferring mechanical features, travel stops, detents, or datum orientations from marketing photos causes catastrophic hallucinations and broken CAD models. **Ground truth is exclusively defined by the raw extracted mesh geometry (`.stl`).**
 
@@ -53,56 +66,78 @@ Before processing files, verify that Autodesk Fusion 360 and its MCP server are 
 
 ---
 
-## Phase 1: Deep Extraction & Mathematical Classification (`inspect_3mf.py`)
+## Phase 1: Deep Extraction & Unique Part Inventory (`inspect_3mf.py`)
 
 For `.3mf` archives, raw `.stl` files do not exist until unpacked. Run the deep extraction and metrology engine first into the model's isolated workspace.
 
 > [!IMPORTANT]
-> **Workspace Isolation Rule**: Never output extraction files into the main repo root (e.g. `./extracted_cad` is forbidden). Always ensure a dedicated model folder exists under `models/<NN>_<Model_Name>/` (scaffold with `scaffold_text_model.py "<Model_Name>"` if new), and route all slice/dice outputs into `models/<NN>_<Model_Name>/workspace/extracted_cad`.
+> **Workspace Isolation Rule**: Never output extraction files into the main repo root. Always ensure a dedicated model folder exists under `models/<NN>_<Model_Name>/` (scaffold with `scaffold_text_model.py "<Model_Name>"` if new), and route all slice/dice outputs into `models/<NN>_<Model_Name>/workspace/extracted_cad`.
 
-### 1. Execute Extraction & Slicing
+### 1. Execute Extraction, Design-Frame Alignment & Inventory
 ```bash
 python3 <path_to_skills>/3mf-to-fusion/scripts/inspect_3mf.py <path_to_file.3mf_or_stl> --out-dir models/<NN>_<Model_Name>/workspace/extracted_cad
 ```
 
-### 2. Read Manifest & Ground-Truth STL Paths
-Read `models/<NN>_<Model_Name>/workspace/extracted_cad/manifest.json`. For each part, retrieve its extracted STL path from `part["stl_file"]` (e.g. `models/<NN>_<Model_Name>/workspace/extracted_cad/part_01.stl`).
+The inventory engine:
+- Unpacks all 3D model parts directly from the 3MF XML tree (resolving component transforms and sub-mesh hierarchies).
+- Reads metadata (`Metadata/model_settings.config`) to recover **original human-assigned part names** and **print plate numbers**.
+- **Canonical Design-Frame Transformation**: Automatically reorients each part so its thinnest axis aligns with the $Z$-axis (build plates/covers are laid flat rather than standing on edge), XY centered at $(0, 0)$ with base at $Z = 0$.
+- **Duplicate Part Grouping**: Identifies geometrically identical parts (e.g., multiple identical sliding pages). **One unique geometry = one phase** (modeled once, then instanced).
 
-Classify the archetype:
-- **Type A: Prismatic / Stepped CAD**: Planar base extrusion + pocket cuts + hole arrays.
-- **Type T: Turned / Axisymmetric**: Collinear circular slices along Z axis. Modeled using a single half-profile sketch + 360° `RevolveFeature`.
-- **Type B: Multi-tier Enclosure / Shell**: Stepped construction planes + thin-wall extrusions + shell.
-- **Type C: Organic Freeform Sculpture**: High non-planar curvature ($> 15$ tiers). Immediately alert the user:
-  > *"This part is a continuous organic sculpture without discrete planar faces or prismatic sketches. Reconstructing it using planar sketches will generate a stepped staircase approximation rather than a smooth organic sculpt."*
+### 2. Present Summary Table & Agree on Phased Processing Order
+Present a structured part table to the user:
 
-Present a summary table to the user:
-| Part ID | Archetype | Bounding Box ($X \times Y \times Z\text{ mm}$) | Tiers | Extracted STL Path | Key Primitives / Patterns Detected |
-| :--- | :--- | :--- | :--- | :--- | :--- |
+| Phase | Part Name | Archetype | Design Extents ($X \times Y \times Z\text{ mm}$) | Instances | Plates | Extracted Design STL |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 
-### 3. Metrology Mathematics & Compensation Rules
-1. **Unit Conversion (`cm = mm / 10.0`)**:
-   - Fusion 360's internal database (`adsk.core.ValueInput.createByReal()`) strictly uses **centimeters (`cm`)**.
-   - Define at the top of every script:
-     ```python
-     def mm(val): return adsk.core.ValueInput.createByReal(float(val) / 10.0)
-     ```
-2. **Circumscribed Circle Compensation (Chord Error)**:
-   - STL tessellations approximate circular holes with inscribed polygons whose edges cut inward along chords.
-   - Never use the inner minimum diameter. Always use `radius_mm` from `manifest.json["primitives"]["circles"]` (95th-percentile circumscribed radius) rounded to the nearest $0.05\text{ mm}$.
-3. **Slot / Obround Recognition**:
-   - When loops have two parallel straight lines and two semicircular ends, model them as a seed slot (`sketchLines` + `sketchArcs`) rather than a multi-segment polygon.
-4. **Pattern Recognition (Grid / Polar)**:
-   - When `manifest.json["patterns"]` detects a regular pitch ($\Delta X, \Delta Y$), model **one master seed cutout** and duplicate it using `comp.features.rectangularPatternFeatures`. Do not draw repetitive identical geometry by hand.
+Rule: Confirm with the user the processing order (e.g., base covers first, then sliding pages, then hinges). Each unique part is processed in its own dedicated, isolated Phase 2 loop.
 
 ---
 
-## Phase 2: In-CAD Mesh-First Staging & Multi-Perspective Metrology (Mandatory)
+## Phase 2: Per-Part Analytical Reverse-Engineering Pipeline (One Unique Part = One Phase)
 
-Before writing any solid reconstruction code or guessing dimensions, import each extracted raw STL mesh directly into Autodesk Fusion 360 for in-situ visual inspection and direct metrology.
+For each unique part in the inventory, execute the 6-step evidence-first loop:
 
-### 1. In-CAD Mesh Staging
-Import the raw STL mesh into an isolated staging component (`Reference_Meshes_Staging`) via `execute_api_script`:
+```mermaid
+flowchart TD
+    A["Step A: Generate Section Pack + In-CAD Staging"] --> B["Step B: Batched Multi-Perspective Review"]
+    B --> C{"Ambiguous / Hidden Regions?"}
+    C -- Yes --> D["Step C: Targeted Zoom Pack"]
+    D --> B
+    C -- No --> E["Step D: Sign Feature Ledger (GATE)"]
+    E --> F["Step E: Incremental CAD Construction (Group-by-Group)"]
+    F --> G["Step F: Quantitative Section-Diff & Tolerance Gate"]
+    G -- "Fail (Diff > threshold)" --> F
+    G -- "Pass" --> H["Part Complete -> Next Unique Part"]
+```
 
+---
+
+### Step A: Batched Pack Generation & In-CAD Staging
+
+Execute the batched evidence generation command on the part's canonical design STL:
+```bash
+python3 <path_to_skills>/3mf-to-fusion/scripts/section_pack.py pack <path_to_part>.design.stl --out <path_to_pack_dir>
+```
+
+This single command generates:
+1. **6 Orthographic Views** (`top`, `bottom`, `front`, `back`, `left`, `right`) in shaded and depth-mapped formats with 10 mm scale bars.
+2. **4 Isometric Perspective Views** (`iso-top-right`, `iso-top-left`, `iso-back-right`, `iso-back-left`).
+3. **Multi-Axis Section Contact Sheets**:
+   - $X$-axis sections (cross sections along lateral travel direction)
+   - $Y$-axis sections (cross sections along longitudinal travel direction)
+   - $Z$-axis sections (elevation tiers)
+   - *Automatic Plateau Detection*: Scans the mesh continuously and places section cuts exactly at geometric "event" boundaries (where steps, slots, chamfers, or holes begin and end).
+4. **Feature Candidates (`features.json`)**:
+   - Step elevations & planar face offsets
+   - Angled planes ($45^\circ$ sliding dovetails/rails, bevels)
+   - Cylindrical features (bosses, guide pins, counterbores, through-holes)
+   - Obround slots (slot widths, straight travel lengths, semicircular radii)
+   - Regular 1D/2D linear and grid patterns
+5. **Pack Index (`pack_index.md`)**: Comprehensive catalog assigning unique IDs (`S-X-03`, `F-12`, `V-top`) to every image and feature candidate.
+
+#### In-CAD Mesh Staging (Isolated to This Part)
+Simultaneously, import *only this part's design STL* into Fusion 360 in an isolated staging component (`Reference_Meshes_Staging`) via `execute_api_script`:
 ```python
 import adsk.core, adsk.fusion
 
@@ -110,140 +145,158 @@ app = adsk.core.Application.get()
 design = adsk.fusion.Design.cast(app.activeProduct)
 root = design.rootComponent
 
-# 1. Create dedicated isolated reference staging occurrence
+# 1. Clean previous staging if present
+for occ in list(root.occurrences):
+    if "Reference_Meshes_Staging" in occ.component.name:
+        occ.deleteMe()
+
+# 2. Create isolated staging occurrence
 ref_occ = root.occurrences.addNewComponent(adsk.core.Matrix3D.create())
 ref_comp = ref_occ.component
 ref_comp.name = "Reference_Meshes_Staging"
 
-# 2. Import raw STL mesh as base feature
+# 3. Import design STL as base feature
 base_feat = ref_comp.features.baseFeatures.add()
 base_feat.startEdit()
-mesh_body = ref_comp.meshBodies.add(
-    stl_path, 
-    adsk.fusion.MeshUnits.MillimeterMeshUnit, 
-    base_feat
-)
+ref_comp.meshBodies.add(design_stl_path, adsk.fusion.MeshUnits.MillimeterMeshUnit, base_feat)
 base_feat.finishEdit()
-
-print(f"Staged mesh body '{mesh_body.name}' (total: {ref_comp.meshBodies.count}) in Reference_Meshes_Staging")
 ```
 
-### 2. Multi-Perspective Visual Capture
-Immediately capture orthographic and isometric screenshots of each raw mesh component directly in Fusion 360 using `get_screenshot`:
-- `view="top"`
-- `view="front"`
-- `view="right"`
-- `view="iso-top-right"`
-
-Inspect these captures to visually determine:
-- True tessellation boundaries, parting lines, and draft angles.
-- Internal undercuts, pockets, and hollow chambers.
-- Mechanical travel limits, guide rails, and pin stops.
-- True primary coordinate datum (e.g. build plate flat face vs. axis of symmetry).
-
-### 3. In-CAD Direct Mesh Metrology
-Directly query the staged mesh geometry via `execute_api_script` to cross-reference dimensions against `manifest.json`:
-- **Bounding Box Extents**:
-  ```python
-  # Reacquire staged mesh body from component
-  mesh_body = ref_comp.meshBodies.item(0)
-
-  # Note: Fusion 360 API bounding boxes return values in centimeters (cm)
-  bbox = mesh_body.boundingBox
-  dx_mm = (bbox.maxPoint.x - bbox.minPoint.x) * 10.0
-  dy_mm = (bbox.maxPoint.y - bbox.minPoint.y) * 10.0
-  dz_mm = (bbox.maxPoint.z - bbox.minPoint.z) * 10.0
-  print(f"Exact Mesh Extents: {dx_mm:.2f} x {dy_mm:.2f} x {dz_mm:.2f} mm")
-  ```
-- **Internal Cross-Section Slicing**:
-  Create temporary construction planes (`comp.constructionPlanes`) through midpoints and critical heights, then project silhouette or cross-section cut edges to measure internal wall thicknesses, slot widths, and travel stop locations.
+Capture an in-CAD camera batch using `get_screenshot` focused strictly on this part:
+- `get_screenshot(view="top", width=1024, height=1024)`
+- `get_screenshot(view="front", width=1024, height=1024)`
+- `get_screenshot(view="right", width=1024, height=1024)`
+- `get_screenshot(view="iso-top-right", width=1024, height=1024)`
 
 ---
 
-## Phase 3: Pure Parametric Fusion 360 Reconstruction
+### Step B: Batched Multi-Perspective Review
 
-Execute CAD generation via `execute_api_script`. Reconstruct each part directly over or aligned with the staged reference mesh bodies using clean timeline features:
-
-### Step 1: Occurrence & Driving Parameters
-```python
-transform = adsk.core.Matrix3D.create()
-occ = root.occurrences.addNewComponent(transform)
-comp = occ.component
-comp.name = part_name
-
-# Add Driving Parameters
-params = design.userParameters
-params.add(f"{part_name}_width", mm(width_mm), "mm", "Base width")
-params.add(f"{part_name}_length", mm(length_mm), "mm", "Base length")
-params.add(f"{part_name}_height", mm(height_mm), "mm", "Base height")
-```
-
-### Step 2: Primary Solid Geometry
-- **If Type T (Turned)**: Sketch half-profile on `comp.xZConstructionPlane` and call `comp.features.revolveFeatures.add(prof, comp.zConstructionAxis, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)`.
-- **If Type A/B (Prismatic)**: Sketch base outline on `comp.xYConstructionPlane` (aligned with reference staging coordinates) and extrude base solid.
-
-### Step 3: Secondary Cutouts & Patterns
-- Draw master seed cutout (slot, counterbore, or pocket).
-- Apply `comp.features.extrudeFeatures.add` with `adsk.fusion.FeatureOperations.CutFeatureOperation`.
-- Apply `comp.features.rectangularPatternFeatures.add` across `comp.xConstructionAxis` and `comp.yConstructionAxis`.
-
-### Step 4: Finishing Touches
-- Apply corner fillets (`comp.features.filletFeatures`) and chamfers (`comp.features.chamferFeatures`).
+Read and review all generated images and section contact sheets **together as a unified batch** before writing a single line of CAD modeling code:
+1. Open and view `sheet_views_p1.png`, `sheet_sections_X_p1.png`, `sheet_sections_Y_p1.png`, and `sheet_sections_Z_p1.png`.
+2. Inspect the depth maps (`V-top-depth.png`, `V-bottom-depth.png`) to identify recessed pockets, recessed rails, and raised bosses that look planar in simple silhouettes.
+3. Check specifically for:
+   - **Continuous Beveled / Dovetail Sliding Rails**: Check $Y$-sections and $X$-sections for $45^\circ$ angled edge overhangs running along margins.
+   - **Raised Margin Strips & Guide Pins**: Check for thin raised ribs and small protruding guide bosses ($\varnothing 2.0\text{ mm} \times 0.8\text{ mm}$).
+   - **Obround Slots**: Measure true width, straight travel span, and circular end radii.
+   - **Card Retention Bezels & Finger Reliefs**: Check for stepped margins ($1.0\text{ mm}$ step down) and central circular finger access holes ($\varnothing 25\text{ mm}$).
 
 ---
 
-## Phase 4: 1:1 Translucent Ghost Overlay Verification
+### Step C: Targeted Zoom Loop (If Ambiguous)
 
-To guarantee 1:1 fidelity with the physical mesh without guessing:
+If any section reveals an intricate, tiny, or ambiguous mechanical feature:
+```bash
+python3 <path_to_skills>/3mf-to-fusion/scripts/section_pack.py zoom <path_to_part>.design.stl --box x0,y0,z0,x1,y1,z1 --out <path_to_zoom_dir>
+```
+Review the zoomed cross-sections and update dimensions before proceeding.
 
-1. **Apply Translucent Ghost Override on Component**:
-   Set a 50% opacity override on the staged reference **component** (note: `Occurrence` in Fusion 360 does not have an opacity setter; opacity override is set on `Component.opacity`):
+---
+
+### Step D: Feature Ledger Signing Gate (Strict Pre-Condition)
+
+> [!CAUTION]
+> **HARD GATE**: Absolutely NO solid modeling code or Fusion API scripts may be executed until the Feature Ledger below is completed and verified against `pack_index.md`.
+
+Fill out the Feature Ledger table citing exact image/section IDs:
+
+| Feature ID | Feature Type | Position ($X, Y, Z\text{ mm}$) | Dimensions ($W, L, H\text{ or } \varnothing$) | Angle | Evidence (Section / Image ID) | Planned Fusion 360 Operation |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `FL-01` | Base Solid Body | Centered $(0, 0, 0)$ | $66.5 \times 91.0 \times 4.60\text{ mm}$ | — | `V-top`, `S-Z-01` | Center-rect sketch + Extrude $4.60\text{ mm}$ |
+| `FL-02` | Continuous $45^\circ$ Rails | Along $\pm X$ edges | $45^\circ$ undercut, $Y: -45.5\to 45.5$ | $45.0^\circ$ | `S-Y-01`, `F-29`, `F-34` | Side-face sketch profile + Extrude Cut/Join |
+| `FL-03` | Recessed Card Pocket | Offset $Z = 3.60\text{ mm}$ | $54.2 \times 88.6\text{ mm}$, Depth $1.0\text{ mm}$ | — | `F-27`, `S-X-04` | Construction plane at $Z=3.6$ + Extrude Cut |
+| `FL-04` | Obround Travel Slots | $X = \pm 18.45, \pm 38.45$ | Width $2.10\text{ mm}$, Stroke $59.22\text{ mm}$ | — | `F-51`–`F-54`, `S-Y-06` | Slot sketch + Extrude Cut + Rect Pattern |
+| `FL-05` | Guide Pins | Raised margin strip | $\varnothing 2.0\text{ mm} \times 0.8\text{ mm}$ | — | `F-48`, `F-49`, `S-Z-02` | Circle sketch on raised face + Extrude Join |
+| `FL-06` | Finger Access Hole | Centered at $X=0, Y=0$ | $\varnothing 25.0\text{ mm}$, Through | — | `F-50`, `V-top` | Circle sketch + Extrude Cut Through |
+
+**Completeness Assertion**:
+Every section plateau in `pack_index.md` and candidate feature in `features.json` must be either mapped to an `FL-XX` entry or explicitly dismissed with a documented mechanical rationale.
+
+---
+
+### Step E: Incremental CAD Construction (Group-by-Group)
+
+> [!IMPORTANT]
+> **Single Feature Group Rule**: Write and execute separate, dedicated Python scripts for each logical group. Never bundle the entire model into one script.
+
+Build order:
+1. **Script 1 — Primary Base Body**:
+   - Add driving User Parameters (`width`, `length`, `height`).
+   - Create component `comp = root.occurrences.addNewComponent(...).component`.
+   - Extrude base prismatic plate or revolve turned profile.
+2. **Script 2 — Continuous Rails & Dovetails**:
+   - Model continuous $45^\circ$ knife-edge rails / bevels along the margins.
+3. **Script 3 — Pockets, Cavities & Card Bezels**:
+   - Model recessed trays and stepped perimeter rims.
+4. **Script 4 — Bosses, Guide Pins & Raised Strips**:
+   - Extrude protruding alignment pins and detents.
+5. **Script 5 — Travel Slots, Holes & Pattern Arrays**:
+   - Model master seed slot and apply `rectangularPatternFeatures`.
+6. **Script 6 — Finishing (Corner Fillets & Chamfers)**:
+   - Apply final edge treatments.
+
+After each script:
+- Capture close-up screenshot with `get_screenshot(view="iso-top-right", width=1024, height=1024)`.
+- Set staging opacity to 50% (`ref_comp.opacity = 0.5`) to visually check ghost mesh alignment.
+
+---
+
+### Step F: Quantitative Section-Diff & Tolerance Gate
+
+Do not rely purely on visual inspection. Export the rebuilt parametric BRep solid to an STL and execute the objective section-diff engine:
+
+1. **Export Built Body STL**:
+   Use `execute_api_script` to export the component's solid body:
    ```python
-   # Apply 50% opacity translucent override to staging component
-   ref_comp.opacity = 0.5  # or ref_occ.component.opacity = 0.5
+   export_mgr = design.exportManager
+   stl_options = export_mgr.createSTLExportOptions(comp.bRepBodies.item(0), built_stl_path)
+   stl_options.meshRefinement = adsk.fusion.MeshRefinementSettings.MeshRefinementHigh
+   export_mgr.execute(stl_options)
    ```
 
-2. **Multi-Perspective Visual Overlay Inspection**:
-   Capture overlay screenshots (`get_screenshot`) across key inspection angles:
-   - `view="iso-top-right"`
-   - `view="front"`
-   - `view="top"`
-   - `view="right"`
+2. **Execute Section Diff Engine**:
+   ```bash
+   python3 <path_to_skills>/3mf-to-fusion/scripts/section_pack.py diff <path_to_part>.design.stl <path_to_built>.stl --out <path_to_diff_dir>
+   ```
 
-3. **Verify Critical Alignment Criteria**:
-   - **Feature Envelope**: Solid body completely encompasses or perfectly aligns with the mesh silhouette.
-   - **Clearances & Travel Limits**: Mounting tabs, hinge clearances, and sliding stops align within nominal 3D printing tolerances ($0.20\text{--}0.40\text{ mm}$).
-   - **Zero Inversion**: Fillets and chamfers curve inward/outward in exact accordance with the ghost mesh contour.
+3. **Quantitative Gate Criteria**:
+   - **Bounding Box Extents Delta**: $\le 0.30\text{ mm}$
+   - **Volume Delta**: $\le 2.0\%$
+   - **Slice Intersection-over-Union (IoU)**: $\ge 0.97$ across all orthogonal slices
+   - **Max Slice Symmetric Difference (XOR Area)**: $\le 6.0\text{ mm}^2$
+
+4. **Visual Diff Inspection**:
+   Inspect `diff_X.png`, `diff_Y.png`, and `diff_Z.png`.
+   - Red regions indicate volume present in the ground-truth mesh but missing in the CAD model (e.g., forgotten pins or undersized chamfers).
+   - Blue regions indicate extra material in the CAD model that overshoots the physical part (e.g., missed cutouts or wrong depths).
+
+If the diff fails, adjust the corresponding feature script and re-run until `section_pack.py diff` outputs `PASS`.
 
 ---
 
-## Phase 5: Clean Timeline Handover & Full-Tree Health Gate
+## Phase 3: Final Assembly Instantiation & Full-Tree Health Gate
 
-Once verification passes, clean up all staging occurrences and assert complete document-wide timeline integrity:
+Once all individual unique parts have passed Phase 2 verification:
 
-### 1. Clean Staging Removal (Multi-Part Safe)
-Delete all staging occurrences across the design so only pure parametric solid geometry remains in the active tree:
-```python
-# Clean Timeline Handover: Delete all staging occurrences across the design
-for occ in list(root.occurrences):
-    if "Reference_Meshes_Staging" in occ.component.name:
-        occ.deleteMe()
-```
+1. **Instantiate Duplicate Occurrences**:
+   If any part has duplicate instances in `manifest.json["parts"][i]["instances"]`, create child occurrences in the root assembly and position them according to their original relative transforms.
+2. **Clean Staging Removal**:
+   Delete all staging occurrences across the entire design:
+   ```python
+   for occ in list(root.occurrences):
+       if "Reference_Meshes_Staging" in occ.component.name:
+           occ.deleteMe()
+   ```
+3. **Strict Document-Wide Health Assertions**:
+   ```python
+   # 1. Zero mesh bodies remaining
+   total_doc_meshes = sum(occ.component.meshBodies.count for occ in root.allOccurrences) + root.meshBodies.count
+   assert total_doc_meshes == 0, f"Design contains {total_doc_meshes} uncleaned reference mesh bodies!"
 
-### 2. Strict Timeline Assertions (Component & Document-Wide)
-Assert that the reconstructed component contains native parametric solid bodies, and verify zero remaining mesh bodies exist across the entire document tree:
-```python
-# 1. Component-level assertions
-assert comp.bRepBodies.count > 0, "No solid bodies produced in reconstructed component!"
-assert comp.meshBodies.count == 0, "Forbidden MeshBody detected in reconstructed component!"
-assert comp.sketches.count > 0, "No sketches found in timeline!"
-
-# 2. Document-wide assertion: verify zero mesh bodies remaining across entire design
-total_doc_meshes = sum(occ.component.meshBodies.count for occ in root.allOccurrences) + root.meshBodies.count
-assert total_doc_meshes == 0, f"Design tree contains {total_doc_meshes} uncleaned reference mesh bodies!"
-
-print("✅ Parametric handover verified: pure BRep solid bodies with 0 mesh bodies remaining in document.")
-```
-
-### 3. Final Model Screenshot
-Call `get_screenshot(view="iso-top-right", width=1024, height=1024)` to verify the final solid model and timeline appearance.
+   # 2. Native parametric bodies present
+   for occ in root.occurrences:
+       assert occ.component.bRepBodies.count > 0, f"Component {occ.name} contains no solid bodies!"
+       assert occ.component.sketches.count > 0, f"Component {occ.name} contains no parametric sketches!"
+   ```
+4. **Final Model Capture**:
+   Call `get_screenshot(view="iso-top-right", width=1024, height=1024)` to verify the complete, clean assembly.

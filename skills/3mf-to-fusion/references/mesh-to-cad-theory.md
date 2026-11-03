@@ -86,3 +86,36 @@ To guarantee 1:1 mathematical fidelity without keeping faceted bodies in the fin
 3. Build the pristine parametric BRep solid inside the main component directly aligned with the staged mesh coordinates.
 4. Perform multi-perspective visual overlay inspection (`iso-top-right`, `front`, `top`, `right`): the solid body should align with the reference mesh perfectly with nominal clearances on travel stops.
 5. Delete all staging occurrences across the document before production handover and assert `comp.bRepBodies.count > 0`, `comp.meshBodies.count == 0`, and document-wide zero mesh bodies (`total_doc_meshes == 0`).
+
+---
+
+## 6. Why Multi-Axis Cross-Sections Beat Surface Silhouettes
+
+Camera projections and surface silhouettes only reveal exterior boundaries. When a mechanical part contains internal or recessed features, standard views fail completely:
+1. **$45^\circ$ Dovetail / Knife-Edge Rails**: A top view shows only an outer rectangle and a silhouette edge; it cannot determine whether the edge is a 90° shoulder, a fillet, or a $45^\circ$ undercut. Transverse $Y$-sections and $X$-sections immediately expose the continuous triangular profile and undercut depth.
+2. **Stepped Internal Margins & Pin Depths**: Depth-color mapping and $Z$-sections expose whether an area is flush with the build plate or stepped down by $1.0\text{ mm}$ to form a card retention bezel.
+3. **Plateau Transition Detection**: By continuously scanning the perimeter and cross-sectional area along each primary axis, the metrology engine automatically detects exact transition points ("geometric events") where slots begin, end, or step down, eliminating manual coordinate guesswork.
+
+---
+
+## 7. Canonical Design-Frame Alignment (Thinnest Axis $\to Z$)
+
+In 3D printing and 3MF packaging, slicers often arrange parts on their thin edge or skewed at arbitrary angles to pack multiple plates or optimize layer strength (e.g., plates standing vertically at $91.0\text{ mm}$ height with $4.6\text{ mm}$ thickness).
+- Slicing along the physical print frame forces hundreds of redundant Z-tiers along a constant prismatic profile, misclassifying simple prismatic plates as organic sculptures (`Type C`).
+- **Canonical Design-Frame Transformation**: Before metrology, the part is rotated so that:
+  - Its thinnest dimension is aligned with the CAD $Z$-axis (laying plates flat).
+  - Its primary functional length is aligned with the $Y$-axis.
+  - The base is set at $Z = 0$, centered at $(0, 0)$.
+This transforms the CAD reconstruction into standard, intuitive sketching planes ($XY$ for base outlines, $XZ$ or $YZ$ for longitudinal profiles).
+
+---
+
+## 8. Quantitative Slice-by-Slice Diff (IoU & XOR Area) vs. Visual Guesswork
+
+Visual ghost overlays can mask small errors, such as missing pins or a slot that is $1.0\text{ mm}$ too short. The quantitative section-diff engine (`section_pack.py diff`) guarantees mathematical fidelity:
+1. Both the reference ground-truth mesh and the exported parametric solid are sliced across identical $X, Y, Z$ planes at plateau transition points.
+2. For each slice, the 2D polygon Boolean symmetric difference ($\text{XOR} = (A \cup B) \setminus (A \cap B)$) and Intersection-over-Union ($\text{IoU} = (A \cap B) / (A \cup B)$) are calculated.
+3. Slices failing the strict tolerance gates ($\text{IoU} < 0.97$ or $\text{XOR} > 6.0\text{ mm}^2$) generate dual-color visual error sheets:
+   - **Red**: Material present in ground truth but missing in the CAD model.
+   - **Blue**: Extra material present in the CAD model that overshoots ground truth.
+A part is only signed off when all slices pass tolerance.

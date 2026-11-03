@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **[3mf-to-fusion]**: Fix extraction staging order, single MeshBody binding, component opacity, and multi-part handover cleanup
 ### Changed
+- **[3mf-to-fusion]**: Restructure pipeline into per-part phased feature ledger, batched X/Y/Z section packs, in-CAD isolated staging, and quantitative slice diffs
 - **[3mf-to-fusion]**: Establish In-CAD Mesh-First Staging & Multi-Perspective Metrology protocol with marketing photo ban and ghost overlay verification
 ### Added
 - **[core]**: Initialized public git repository with multi-agent support (Antigravity, Claude, Cursor)
