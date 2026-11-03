@@ -210,4 +210,45 @@ def create_counterbore_hole(comp, base_body, cx_mm, cy_mm, hole_dia_mm, cbore_di
     cut2_in.setDistanceExtent(False, mm(cbore_depth_mm))
     cut2_in.participantBodies = [base_body]
     return extrudes.add(cut2_in)
+
+---
+
+## 8. In-CAD Reference Mesh Staging, Ghost Overlay & Handover Assertion
+
+```python
+def stage_reference_mesh(root, stl_path):
+    """Imports raw STL into an isolated Reference_Meshes_Staging component."""
+    ref_occ = root.occurrences.addNewComponent(adsk.core.Matrix3D.create())
+    ref_comp = ref_occ.component
+    ref_comp.name = "Reference_Meshes_Staging"
+    
+    base_feat = ref_comp.features.baseFeatures.add()
+    base_feat.startEdit()
+    mesh_body = ref_comp.meshBodies.add(
+        stl_path, 
+        adsk.fusion.MeshUnits.MillimeterMeshUnit, 
+        base_feat
+    )
+    base_feat.finishEdit()
+    print(f"Staged mesh body '{mesh_body.name}' in {ref_comp.name} (total: {ref_comp.meshBodies.count})")
+    return ref_occ, ref_comp
+
+def apply_ghost_overlay(ref_target, opacity=0.5):
+    """Sets a translucent opacity override on the reference component (Component has opacity setter; Occurrence does not)."""
+    comp = getattr(ref_target, "component", ref_target)
+    comp.opacity = opacity
+
+def handover_and_assert_timeline(root, comp):
+    """Deletes all staging reference mesh occurrences across document and asserts pure parametric BRep solid bodies."""
+    for occ in list(root.occurrences):
+        if "Reference_Meshes_Staging" in occ.component.name:
+            occ.deleteMe()
+        
+    assert comp.bRepBodies.count > 0, "No solid bodies produced in reconstructed component!"
+    assert comp.meshBodies.count == 0, "Forbidden MeshBody detected in reconstructed component!"
+    assert comp.sketches.count > 0, "No sketches found in timeline!"
+
+    total_doc_meshes = sum(occ.component.meshBodies.count for occ in root.allOccurrences) + root.meshBodies.count
+    assert total_doc_meshes == 0, f"Document tree contains {total_doc_meshes} uncleaned mesh bodies!"
+    print("✅ Parametric handover verified: pure BRep solid bodies with 0 mesh bodies remaining in document.")
 ```
