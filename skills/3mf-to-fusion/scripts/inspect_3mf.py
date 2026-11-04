@@ -645,6 +645,7 @@ def load_3mf_parts(path):
             parts.append({
                 "name": info["parts"].get(cid) or info["objects"].get(oid) or f"object_{oid}_{cid}",
                 "plate": info["plates"].get(oid),
+                "parent_object_name": info["objects"].get(oid),
                 "source_object": {"file": cpath, "object_id": cid, "build_object_id": oid},
                 "component_transform": T.tolist(),
                 "item_transform": item_T.tolist(),
@@ -736,6 +737,126 @@ def analyze_unique_part(design_mesh, clean_name, out_dir):
     return tiers, archetype, patterns, round(pf, 3), (half_prof if is_turned else None)
 
 
+def detect_pip_subassemblies(parts, manifest_parts):
+    """
+    Identifies print-in-place (PIP) kinematic relationships and subassemblies between parts.
+    Detects parts sharing a multi-component 3MF object, or co-located parts on the same
+    plate with adjacent bounding bounds or hinge/knuckle features.
+    """
+    subassemblies = []
+    seen_part_combinations = set()
+
+    # 1. Multi-component 3MF object groups
+    parent_objs = {}
+    for p in parts:
+        src = p.get("source_object") or {}
+        b_oid = src.get("build_object_id")
+        if b_oid is not None:
+            parent_objs.setdefault(b_oid, []).append(p)
+
+    for b_oid, p_list in parent_objs.items():
+        if len(p_list) >= 2:
+            names = sorted(list(set(p["name"] for p in p_list)))
+            combo_key = tuple(names)
+            if combo_key in seen_part_combinations:
+                continue
+            seen_part_combinations.add(combo_key)
+
+            plate = p_list[0].get("plate")
+            parent_name = p_list[0].get("parent_object_name")
+            has_hinge = any(any(k in n.lower() for k in ("hinge", "knuckle", "spine", "pivot")) for n in names)
+            has_cover = any(any(k in n.lower() for k in ("cover", "front", "rear", "lid")) for n in names)
+
+            if parent_name and parent_name.lower() not in ("assembly", "model", "object", ""):
+                sub_name = slug(parent_name)
+            elif has_hinge and has_cover:
+                sub_name = "Cover_Assembly"
+            elif has_hinge:
+                sub_name = "Hinge_Assembly"
+            else:
+                sub_name = parent_name or f"Subassembly_Obj{b_oid}"
+
+            k_type = "conical_pip_hinge" if has_hinge else "articulated_assembly"
+
+            # Find matching phases in manifest_parts
+            phases = []
+            for mp in manifest_parts:
+                mp_names = {inst["name"] for inst in mp["instances"]}
+                if mp_names.intersection(set(names)):
+                    phases.append(mp["phase"])
+
+            subassemblies.append({
+                "subassembly_id": f"pip_{len(subassemblies)+1:02d}_{slug(sub_name)}",
+                "name": sub_name,
+                "plate": plate,
+                "parts": names,
+                "phases": sorted(list(set(phases))),
+                "kinematic_type": k_type,
+                "recommended_occurrence": sub_name,
+                "scoping_rule": f"Encapsulate inside parent occurrence '{sub_name}'; strictly isolate occurrence rebuilds.",
+            })
+
+    # 2. Co-located parts on the same plate (spatial proximity / interleaving)
+    plates = {}
+    for p in parts:
+        pl = p.get("plate")
+        if pl is not None:
+            plates.setdefault(pl, []).append(p)
+
+    for pl, p_list in plates.items():
+        if len(p_list) < 2:
+            continue
+        existing_sub_parts = {name for sub in subassemblies if sub["plate"] == pl for name in sub["parts"]}
+        uncovered = [p for p in p_list if p["name"] not in existing_sub_parts]
+        if len(uncovered) >= 2:
+            adj_groups = []
+            for p in uncovered:
+                p_bounds = p["mesh"].bounds
+                matched_group = None
+                for grp in adj_groups:
+                    for gp in grp:
+                        gp_bounds = gp["mesh"].bounds
+                        overlap = np.all(p_bounds[0] <= gp_bounds[1] + 2.0) and np.all(gp_bounds[0] <= p_bounds[1] + 2.0)
+                        if overlap:
+                            matched_group = grp
+                            break
+                    if matched_group:
+                        break
+                if matched_group:
+                    matched_group.append(p)
+                else:
+                    adj_groups.append([p])
+
+            for grp in adj_groups:
+                if len(grp) >= 2:
+                    names = sorted(list(set(p["name"] for p in grp)))
+                    combo_key = tuple(names)
+                    if combo_key in seen_part_combinations:
+                        continue
+                    seen_part_combinations.add(combo_key)
+
+                    has_hinge = any(any(k in n.lower() for k in ("hinge", "knuckle", "spine", "pivot")) for n in names)
+                    k_type = "conical_pip_hinge" if has_hinge else "interlocking_pip"
+                    sub_name = "Cover_Assembly" if has_hinge else f"Plate_{pl}_Assembly"
+                    phases = []
+                    for mp in manifest_parts:
+                        mp_names = {inst["name"] for inst in mp["instances"]}
+                        if mp_names.intersection(set(names)):
+                            phases.append(mp["phase"])
+                    subassemblies.append({
+                        "subassembly_id": f"pip_{len(subassemblies)+1:02d}_{slug(sub_name)}",
+                        "name": sub_name,
+                        "plate": pl,
+                        "parts": names,
+                        "phases": sorted(list(set(phases))),
+                        "kinematic_type": k_type,
+                        "recommended_occurrence": sub_name,
+                        "scoping_rule": f"Encapsulate inside parent occurrence '{sub_name}'; strictly isolate occurrence rebuilds.",
+                    })
+
+    return subassemblies
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="3MF / STL inventory + metrology: unique named parts, design frame, duplicate grouping."
@@ -817,10 +938,26 @@ def main():
             part_info["reconstruction_script"] = script_path.name
         manifest["parts"].append(part_info)
 
+    # Detect Print-in-Place (PIP) kinematic subassemblies
+    pip_subassemblies = detect_pip_subassemblies(parts, manifest["parts"])
+    if pip_subassemblies:
+        manifest["pip_subassemblies"] = pip_subassemblies
+
     with open(out_dir / "manifest.json", "w") as f:
         json.dump(manifest, f, indent=2)
 
     print(f"{len(parts)} bodies -> {len(groups)} unique phases ({out_dir}/manifest.json)")
+    if pip_subassemblies:
+        print("\n--- Proposed Print-in-Place (PIP) Kinematic Subassemblies ---")
+        for sub in pip_subassemblies:
+            p_str = ", ".join(sub["parts"])
+            ph_str = ", ".join(f"Phase {p}" for p in sub["phases"])
+            pl_str = f"Plate {sub['plate']}" if sub.get("plate") is not None else "Multi-plate"
+            print(f"  * {sub['name']} ({pl_str}): [{p_str}] -> ({ph_str})")
+            print(f"    Type: {sub['kinematic_type']}")
+            print(f"    Scoping: {sub['scoping_rule']}")
+        print()
+
     print(f"{'phase':<6}{'name':<14}{'archetype':<34}{'design extents X x Y x Z mm':<30}{'inst':<5}plates")
     for pi in manifest["parts"]:
         ex = " x ".join(f"{v:.2f}" for v in pi["extents_xyz_mm"])
