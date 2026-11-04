@@ -5,15 +5,27 @@ Builds a Bambu-style 3MF (multi-component object + a rotated duplicate), then ch
 candidates and the section-diff gate.
 """
 import json
+import os
 import subprocess
 import sys
 import tempfile
 import zipfile
 from pathlib import Path
 
-import numpy as np
-import trimesh
-from shapely.geometry import LineString, Polygon
+try:
+    import numpy as np
+    import trimesh
+    from shapely.geometry import LineString, Polygon
+except ImportError as e:
+    repo_root = Path(__file__).resolve().parent.parent.parent.parent
+    venv_py = repo_root / ".venv" / "bin" / "python3"
+    if venv_py.exists() and sys.executable != str(venv_py):
+        os.execv(str(venv_py), [str(venv_py)] + sys.argv)
+    sys.stderr.write(
+        f"Missing required dependency: {e}\n"
+        "Ensure Python dependencies are installed in .venv\n"
+    )
+    sys.exit(1)
 
 HERE = Path(__file__).resolve().parent
 SCRIPTS = HERE.parent / "scripts"
@@ -99,6 +111,15 @@ def main():
         # design frame: X=40, Y=60, thin axis (4 + 0.8 boss) -> Z even though stored on edge
         assert np.allclose(plate["extents_xyz_mm"], [40, 60, 4.8], atol=0.2), plate["extents_xyz_mm"]
 
+        # print-in-place kinematic subassembly detection
+        assert "pip_subassemblies" in man, "pip_subassemblies missing from manifest"
+        pip_subs = man["pip_subassemblies"]
+        assert len(pip_subs) >= 1, pip_subs
+        assert pip_subs[0]["name"] == "Assembly"
+        assert sorted(pip_subs[0]["parts"]) == ["block", "plate"]
+        assert sorted(pip_subs[0]["phases"]) == [1, 2]
+        assert pip_subs[0]["plate"] == 1
+
         # features
         pk = td / "pk"
         run(SCRIPTS / "section_pack.py", "pack", td / "ex" / plate["stl_file"], "--out", pk)
@@ -121,7 +142,35 @@ def main():
         nb.export(str(td / "noboss.stl"))
         r = run(SCRIPTS / "section_pack.py", "diff", src, td / "noboss.stl", "--out", td / "d_bad", "--vol-pct", "0.01", check=False)
         assert r.returncode == 1 and "FAIL" in r.stdout, r.stdout + r.stderr
-    print("OK: inventory, design frame, duplicate grouping, feature candidates, diff gate")
+
+        # conical print-in-place calculator CLI
+        r_calc = run(
+            SCRIPTS / "conical_pip_calc.py",
+            "--knuckle-dia", "4.828",
+            "--gap-radial", "0.35",
+            "--gap-axial", "0.40",
+            "--taper-deg", "30",
+            "--format", "json",
+        )
+        calc_json = json.loads(r_calc.stdout)
+        assert abs(calc_json["male_cone"]["base_radius_mm"] - 1.650) < 0.01
+        assert abs(calc_json["male_cone"]["height_mm"] - 2.20) < 0.05
+        assert abs(calc_json["male_cone"]["engagement_depth_mm"] - 1.80) < 0.05
+        assert abs(calc_json["male_cone"]["tip_dia_mm"] - 0.76) < 0.02
+        assert abs(calc_json["female_socket"]["entrance_radius_mm"] - 1.769) < 0.02
+        assert abs(calc_json["female_socket"]["depth_mm"] - 2.00) < 0.05
+        assert abs(calc_json["tolerances"]["normal_3d_air_gap_mm"] - 0.303) < 0.01
+        assert calc_json["feasibility"]["is_feasible"] is True
+
+        r_code = run(
+            SCRIPTS / "conical_pip_calc.py",
+            "--knuckle-dia", "4.828",
+            "--format", "fusion-api",
+        )
+        assert "male_base_radius_cm" in r_code.stdout
+        assert "female_entrance_radius_cm" in r_code.stdout
+
+    print("OK: inventory, design frame, duplicate grouping, PIP subassemblies, feature candidates, diff gate, conical PIP calc")
 
 
 if __name__ == "__main__":
