@@ -13,10 +13,25 @@ def mm(val):
     """Fusion 360 internal database strictly uses centimeters. Always divide mm by 10.0."""
     return adsk.core.ValueInput.createByReal(float(val) / 10.0)
 
-def setup_part_component(root, part_name):
-    """Creates a clean isolated occurrence and returns (occ, comp)."""
+def setup_part_component(parent_occ_or_root, part_name, clean_existing=True):
+    """
+    Creates or cleanly resets a component occurrence without deleting peer occurrences.
+    Strictly adheres to Mandate 3 (Idempotent Component Scoping).
+    """
+    if hasattr(parent_occ_or_root, "childOccurrences"):
+        occurrences = parent_occ_or_root.childOccurrences
+    elif hasattr(parent_occ_or_root, "occurrences"):
+        occurrences = parent_occ_or_root.occurrences
+    else:
+        occurrences = parent_occ_or_root
+
+    if clean_existing:
+        for occ in list(occurrences):
+            if occ.component.name == part_name:
+                occ.deleteMe()
+
     transform = adsk.core.Matrix3D.create()
-    occ = root.occurrences.addNewComponent(transform)
+    occ = occurrences.addNewComponent(transform)
     comp = occ.component
     comp.name = part_name
     return occ, comp
@@ -466,4 +481,51 @@ def create_card_pocket_and_finger_hole(comp, base_body, pocket_w_mm, pocket_l_mm
     cut_hole.setDistanceExtent(False, mm(z_top_mm + 5.0)) # cut completely through bottom
     cut_hole.participantBodies = [base_body]
     return extrudes.add(cut_hole)
+```
+
+---
+
+### 11.5 Conical Print-in-Place (PIP) Captive Pivot Hinge
+
+```python
+def create_conical_pip_pivot(comp, base_body, center_pt_3d, r_base_mm, height_mm, taper_deg=30.0, is_cut=False):
+    """
+    Constructs a captive conical PIP pivot (frustum male cone or female socket).
+    Strictly adheres to Mandate 4 (Pure Cylindrical Primitive Primitives).
+    
+    Parameters derived via:
+        python3 conical_pip_calc.py --knuckle-dia <dia> --gap-radial 0.35 --gap-axial 0.40 --taper-deg 30
+    
+    Args:
+        comp: Target Fusion Component
+        base_body: Parent knuckle solid body
+        center_pt_3d: adsk.core.Point3D knuckle pivot center (in centimeters)
+        r_base_mm: Cone base radius (or entrance radius for socket) in mm
+        height_mm: Extrude distance in mm (signed for direction)
+        taper_deg: Half-angle taper (default 30.0°). Negative for narrowing taper.
+        is_cut: True for female socket cut, False for male cone join
+    """
+    sketches = comp.sketches
+    extrudes = comp.features.extrudeFeatures
+    
+    # Create sketch on orthogonal plane (e.g., xZConstructionPlane for Y-axis hinges)
+    sketch = sketches.add(comp.xZConstructionPlane)
+    c_pt = sketch.modelToSketchSpace(center_pt_3d)
+    
+    # Mandate 4: Pure circle sketch primitive (never polygonal or multi-line)
+    sketch.sketchCurves.sketchCircles.addByCenterRadius(c_pt, float(r_base_mm) / 10.0)
+    prof = sketch.profiles.item(0)
+    
+    op = adsk.fusion.FeatureOperations.CutFeatureOperation if is_cut else adsk.fusion.FeatureOperations.JoinFeatureOperation
+    ext_in = extrudes.createInput(prof, op)
+    ext_in.participantBodies = [base_body]
+    
+    # Distance extent
+    ext_in.setDistanceExtent(False, adsk.core.ValueInput.createByReal(float(height_mm) / 10.0))
+    
+    # Negative taper angle narrows the profile as it extends outward
+    taper_sign = -1.0 if height_mm > 0 else 1.0
+    ext_in.taperAngle = adsk.core.ValueInput.createByReal(math.radians(taper_sign * taper_deg))
+    
+    return extrudes.add(ext_in)
 ```

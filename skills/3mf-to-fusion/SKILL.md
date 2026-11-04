@@ -40,6 +40,30 @@ Before executing any commands, internalize these fatal anti-patterns to prevent 
 > 
 > Inferring mechanical features, travel stops, detents, or datum orientations from marketing photos causes catastrophic hallucinations and broken CAD models. **Ground truth is exclusively defined by the raw extracted mesh geometry (`.stl`).**
 
+### Mandate 3: Idempotent Component Scoping Rule (Strict Non-Destructive Occurrence Cleanup)
+> [!CAUTION]
+> **STRICT MANDATE**: *CAD build scripts must NEVER mutate or delete `root.occurrences` globally. Occurrence cleanup must be strictly scoped to the designated part or subassembly component.*
+> 
+> Running unconstrained loops like `for occ in list(root.occurrences): occ.deleteMe()` destroys peer components (e.g., slider trays, hardware inserts) built during previous phases.
+> 
+> **MANDATORY**: Rebuild cleanup must target strictly its own component name:
+> ```python
+> # Scoped occurrence cleanup: Only replace the target component
+> parent = subassembly_occ.childOccurrences if is_in_subassembly else root.occurrences
+> for occ in list(parent):
+>     if occ.component.name == TARGET_COMPONENT_NAME:
+>         occ.deleteMe()
+> ```
+> Subassembly scripts must operate exclusively within their designated subassembly occurrence and never touch peer occurrences in root.
+
+### Mandate 4: Pure Cylindrical Primitive Modeling Mandate
+> [!IMPORTANT]
+> **STRICT MANDATE**: *All revolving, pivoting, or cylindrical features (hinge barrels, bores, pins, bosses, counterbores) MUST use pure circle sketch primitives (`sketchCircles.addByCenterRadius`) or axial revolves (`revolveFeatures`).*
+> 
+> Reconstructing knuckle barrels or cylindrical bosses using polygonal sweeps or composite multi-line profile sketches with inner tangent lines creates unstable geometry. When downstream edge treatments (such as $0.5\text{ mm}$ chamfers or fillets) are applied, the tangent line chains through the neck and slices the solid body into multiple fragmented bodies (e.g. 8 disjoint bodies).
+> 
+> Always extrude cylindrical features from pure circle primitives or revolve half-profiles about a defined construction axis.
+
 ---
 
 ## Phase 0: Pre-Flight Safety Gate (Mandatory)
@@ -83,14 +107,21 @@ The inventory engine:
 - Reads metadata (`Metadata/model_settings.config`) to recover **original human-assigned part names** and **print plate numbers**.
 - **Canonical Design-Frame Transformation**: Automatically reorients each part so its thinnest axis aligns with the $Z$-axis (build plates/covers are laid flat rather than standing on edge), XY centered at $(0, 0)$ with base at $Z = 0$.
 - **Duplicate Part Grouping**: Identifies geometrically identical parts (e.g., multiple identical sliding pages). **One unique geometry = one phase** (modeled once, then instanced).
+- **Print-in-Place (PIP) Kinematic Subassembly Detection**: Identifies parts on the same build plate or parent 3MF object that form an articulated kinematic unit (e.g. complementary alternating knuckle barrels, sliding rails). Proposes grouping them into a dedicated parent occurrence (`Cover_Assembly`) so they can be modeled as subassembly children and exported as a monolithic PIP unit.
 
 ### 2. Present Summary Table & Agree on Phased Processing Order
-Present a structured part table to the user:
+Present structured part and PIP subassembly tables to the user:
 
+#### Unique Parts Inventory
 | Phase | Part Name | Archetype | Design Extents ($X \times Y \times Z\text{ mm}$) | Instances | Plates | Extracted Design STL |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 
-Rule: Confirm with the user the processing order (e.g., base covers first, then sliding pages, then hinges). Each unique part is processed in its own dedicated, isolated Phase 2 loop.
+#### Proposed Print-in-Place (PIP) Subassemblies
+| Subassembly Name | Plate | Kinematic Type | Member Parts | Phases | Recommended Parent Occurrence |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `Cover_Assembly` | 1 | `conical_pip_hinge` | `front, rear, rear_hinge` | 1, 2, 3 | `root.occurrences.addNewComponent(...)` as `Cover_Assembly` |
+
+Rule: Confirm with the user the processing order and subassembly grouping before modeling. Each unique part is processed in its own dedicated, isolated Phase 2 loop, scoped inside its parent subassembly occurrence when applicable.
 
 ---
 
@@ -222,18 +253,24 @@ Every section plateau in `pack_index.md` and candidate feature in `features.json
 Build order:
 1. **Script 1 — Primary Base Body**:
    - Add driving User Parameters (`width`, `length`, `height`).
-   - Create component `comp = root.occurrences.addNewComponent(...).component`.
+   - Create component `comp = parent_occ.childOccurrences.addNewComponent(...).component` (or `root.occurrences` if not in a subassembly).
    - Extrude base prismatic plate or revolve turned profile.
 2. **Script 2 — Continuous Rails & Dovetails**:
    - Model continuous $45^\circ$ knife-edge rails / bevels along the margins.
-3. **Script 3 — Pockets, Cavities & Card Bezels**:
+3. **Script 3 — Print-in-Place Hinge Knuckles & Conical Pivots (If PIP Articulated)**:
+   - For captive conical pivots, **never derive dimensions on the fly**. Run the deterministic calculator:
+     ```bash
+     python3 <path_to_skills>/3mf-to-fusion/scripts/conical_pip_calc.py --knuckle-dia <dia_mm> --gap-radial 0.35 --gap-axial 0.40 --taper-deg 30
+     ```
+   - Model male frustum cones and female sockets using pure circle sketch primitives (`sketchCircles.addByCenterRadius`) or axial revolves (`revolveFeatures`).
+4. **Script 4 — Pockets, Cavities & Card Bezels**:
    - Model recessed trays and stepped perimeter rims.
-4. **Script 4 — Bosses, Guide Pins & Raised Strips**:
+5. **Script 5 — Bosses, Guide Pins & Raised Strips**:
    - Extrude protruding alignment pins and detents.
-5. **Script 5 — Travel Slots, Holes & Pattern Arrays**:
+6. **Script 6 — Travel Slots, Holes & Pattern Arrays**:
    - Model master seed slot and apply `rectangularPatternFeatures`.
-6. **Script 6 — Finishing (Corner Fillets & Chamfers)**:
-   - Apply final edge treatments.
+7. **Script 7 — Finishing (Corner Fillets & Chamfers)**:
+   - Apply final edge treatments. Ensure chamfers are applied only to filtered edge collections with specific radii/centers to prevent multi-body slicing.
 
 After each script:
 - Capture close-up screenshot with `get_screenshot(view="iso-top-right", width=1024, height=1024)`.
