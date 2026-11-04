@@ -170,6 +170,34 @@ def main():
         assert "male_base_radius_cm" in r_code.stdout
         assert "female_entrance_radius_cm" in r_code.stdout
 
+        # validation checks
+        r_bad = run(SCRIPTS / "conical_pip_calc.py", "--knuckle-dia", "4.828", "--min-tip-dia", "-0.5", check=False)
+        assert r_bad.returncode != 0 and "min_tip_dia must be positive" in r_bad.stderr
+
+        # 3-part chain kinematic clustering test
+        sys.path.append(str(SCRIPTS))
+        from inspect_3mf import detect_pip_subassemblies
+        b1 = trimesh.creation.box([10, 10, 10])
+        b1.apply_translation([0, 0, 0])
+        b2 = trimesh.creation.box([10, 10, 10])
+        b2.apply_translation([20, 0, 0])
+        b_spine = trimesh.creation.box([12, 10, 10])
+        b_spine.apply_translation([10, 0, 0]) # bridges b1 and b2
+        chain_parts = [
+            {"name": "front_cover", "plate": 1, "source_object": None, "mesh": b1},
+            {"name": "rear_cover", "plate": 1, "source_object": None, "mesh": b2},
+            {"name": "spine_hinge", "plate": 1, "source_object": None, "mesh": b_spine},
+        ]
+        manifest_chain = [
+            {"phase": 1, "instances": [{"name": "front_cover"}]},
+            {"phase": 2, "instances": [{"name": "rear_cover"}]},
+            {"phase": 3, "instances": [{"name": "spine_hinge"}]},
+        ]
+        chain_subs = detect_pip_subassemblies(chain_parts, manifest_chain)
+        assert len(chain_subs) == 1, chain_subs
+        assert sorted(chain_subs[0]["parts"]) == ["front_cover", "rear_cover", "spine_hinge"]
+        assert sorted(chain_subs[0]["phases"]) == [1, 2, 3]
+
     print("OK: inventory, design frame, duplicate grouping, PIP subassemblies, feature candidates, diff gate, conical PIP calc")
 
 

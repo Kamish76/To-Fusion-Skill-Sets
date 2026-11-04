@@ -809,50 +809,57 @@ def detect_pip_subassemblies(parts, manifest_parts):
         existing_sub_parts = {name for sub in subassemblies if sub["plate"] == pl for name in sub["parts"]}
         uncovered = [p for p in p_list if p["name"] not in existing_sub_parts]
         if len(uncovered) >= 2:
-            adj_groups = []
-            for p in uncovered:
-                p_bounds = p["mesh"].bounds
-                matched_group = None
-                for grp in adj_groups:
-                    for gp in grp:
-                        gp_bounds = gp["mesh"].bounds
-                        overlap = np.all(p_bounds[0] <= gp_bounds[1] + 2.0) and np.all(gp_bounds[0] <= p_bounds[1] + 2.0)
-                        if overlap:
-                            matched_group = grp
-                            break
-                    if matched_group:
-                        break
-                if matched_group:
-                    matched_group.append(p)
-                else:
-                    adj_groups.append([p])
+            n_unc = len(uncovered)
+            adj = {i: [] for i in range(n_unc)}
+            for i in range(n_unc):
+                bi = uncovered[i]["mesh"].bounds
+                for j in range(i + 1, n_unc):
+                    bj = uncovered[j]["mesh"].bounds
+                    overlap = np.all(bi[0] <= bj[1] + 2.0) and np.all(bj[0] <= bi[1] + 2.0)
+                    if overlap:
+                        adj[i].append(j)
+                        adj[j].append(i)
 
-            for grp in adj_groups:
-                if len(grp) >= 2:
-                    names = sorted(list(set(p["name"] for p in grp)))
-                    combo_key = tuple(names)
-                    if combo_key in seen_part_combinations:
-                        continue
-                    seen_part_combinations.add(combo_key)
+            visited = set()
+            for i in range(n_unc):
+                if i not in visited:
+                    comp_indices = []
+                    q = [i]
+                    visited.add(i)
+                    while q:
+                        curr = q.pop(0)
+                        comp_indices.append(curr)
+                        for neighbor in adj[curr]:
+                            if neighbor not in visited:
+                                visited.add(neighbor)
+                                q.append(neighbor)
 
-                    has_hinge = any(any(k in n.lower() for k in ("hinge", "knuckle", "spine", "pivot")) for n in names)
-                    k_type = "conical_pip_hinge" if has_hinge else "interlocking_pip"
-                    sub_name = "Cover_Assembly" if has_hinge else f"Plate_{pl}_Assembly"
-                    phases = []
-                    for mp in manifest_parts:
-                        mp_names = {inst["name"] for inst in mp["instances"]}
-                        if mp_names.intersection(set(names)):
-                            phases.append(mp["phase"])
-                    subassemblies.append({
-                        "subassembly_id": f"pip_{len(subassemblies)+1:02d}_{slug(sub_name)}",
-                        "name": sub_name,
-                        "plate": pl,
-                        "parts": names,
-                        "phases": sorted(list(set(phases))),
-                        "kinematic_type": k_type,
-                        "recommended_occurrence": sub_name,
-                        "scoping_rule": f"Encapsulate inside parent occurrence '{sub_name}'; strictly isolate occurrence rebuilds.",
-                    })
+                    if len(comp_indices) >= 2:
+                        grp = [uncovered[idx] for idx in comp_indices]
+                        names = sorted(list(set(p["name"] for p in grp)))
+                        combo_key = tuple(names)
+                        if combo_key in seen_part_combinations:
+                            continue
+                        seen_part_combinations.add(combo_key)
+
+                        has_hinge = any(any(k in n.lower() for k in ("hinge", "knuckle", "spine", "pivot")) for n in names)
+                        k_type = "conical_pip_hinge" if has_hinge else "interlocking_pip"
+                        sub_name = "Cover_Assembly" if has_hinge else f"Plate_{pl}_Assembly"
+                        phases = []
+                        for mp in manifest_parts:
+                            mp_names = {inst["name"] for inst in mp["instances"]}
+                            if mp_names.intersection(set(names)):
+                                phases.append(mp["phase"])
+                        subassemblies.append({
+                            "subassembly_id": f"pip_{len(subassemblies)+1:02d}_{slug(sub_name)}",
+                            "name": sub_name,
+                            "plate": pl,
+                            "parts": names,
+                            "phases": sorted(list(set(phases))),
+                            "kinematic_type": k_type,
+                            "recommended_occurrence": sub_name,
+                            "scoping_rule": f"Encapsulate inside parent occurrence '{sub_name}'; strictly isolate occurrence rebuilds.",
+                        })
 
     return subassemblies
 

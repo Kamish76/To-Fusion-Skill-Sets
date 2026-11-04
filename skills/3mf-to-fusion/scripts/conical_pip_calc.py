@@ -44,6 +44,10 @@ def calculate_conical_pip(
         raise ValueError(f"taper_deg must be between 0 and 85 degrees, got {taper_deg}")
     if gap_radial < 0 or gap_axial < 0:
         raise ValueError("Clearance gaps must be non-negative.")
+    if min_tip_dia <= 0:
+        raise ValueError(f"min_tip_dia must be positive, got {min_tip_dia}")
+    if tip_clearance < 0:
+        raise ValueError(f"tip_clearance must be non-negative, got {tip_clearance}")
 
     r_knuckle = knuckle_dia / 2.0
     alpha_rad = math.radians(taper_deg)
