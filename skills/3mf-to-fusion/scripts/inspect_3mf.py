@@ -10,15 +10,23 @@ import argparse
 import json
 import math
 import os
+import re
 import sys
+import xml.etree.ElementTree as ET
+import zipfile
 from pathlib import Path
 
 try:
     import numpy as np
     import trimesh
     from scipy.optimize import least_squares
+    from scipy.spatial import cKDTree
     from shapely.geometry import Polygon, MultiPolygon
 except ImportError as e:
+    repo_root = Path(__file__).resolve().parent.parent.parent.parent
+    venv_py = repo_root / ".venv" / "bin" / "python3"
+    if venv_py.exists() and sys.executable != str(venv_py):
+        os.execv(str(venv_py), [str(venv_py)] + sys.argv)
     sys.stderr.write(
         f"Missing required dependency: {e}\n"
         "Ensure Python dependencies are installed:\n"
@@ -542,107 +550,427 @@ def generate_fusion_script(part, out_file_path):
         f.write("\n".join(script_lines))
 
 
+
+# ==============================================================================
+# Phase 1 inventory: 3MF parsing, design frame, duplicate grouping
+# ==============================================================================
+
+NS_CORE = "{http://schemas.microsoft.com/3dmanufacturing/core/2015/02}"
+NS_PROD = "{http://schemas.microsoft.com/3dmanufacturing/production/2015/06}"
+UNIT_TO_MM = {"micron": 0.001, "millimeter": 1.0, "centimeter": 10.0, "inch": 25.4, "foot": 304.8, "meter": 1000.0}
+
+
+def _matrix(s):
+    """3MF 12-number row-vector transform (translation in last row) -> 4x4 column-form matrix."""
+    T = np.eye(4)
+    if s:
+        v = [float(x) for x in s.split()]
+        T[:3, :3] = np.array(v[:9]).reshape(3, 3).T
+        T[:3, 3] = v[9:12]
+    return T
+
+
+def _read_objects(xml_bytes):
+    """Returns (root, {object_id: {'mesh': Trimesh|None, 'components': [(path, objectid, T)]}})."""
+    root = ET.fromstring(xml_bytes)
+    out = {}
+    for obj in root.iter(NS_CORE + "object"):
+        entry = {"mesh": None, "components": []}
+        m = obj.find(NS_CORE + "mesh")
+        if m is not None:
+            verts = np.array([[float(v.get(a)) for a in "xyz"] for v in m.iter(NS_CORE + "vertex")])
+            faces = np.array([[int(t.get(a)) for a in ("v1", "v2", "v3")] for t in m.iter(NS_CORE + "triangle")])
+            entry["mesh"] = trimesh.Trimesh(verts, faces, process=True)
+        for c in obj.iter(NS_CORE + "component"):
+            entry["components"].append((c.get(NS_PROD + "path"), int(c.get("objectid")), _matrix(c.get("transform"))))
+        out[int(obj.get("id"))] = entry
+    return root, out
+
+
+def _bambu_settings(z):
+    """Real part names + plate numbers from Bambu/Orca Metadata/model_settings.config (empty dicts if absent)."""
+    info = {"objects": {}, "parts": {}, "plates": {}}
+    if "Metadata/model_settings.config" not in z.namelist():
+        return info
+    root = ET.fromstring(z.read("Metadata/model_settings.config"))
+
+    def meta(e, key):
+        for m in e.findall("metadata"):
+            if m.get("key") == key:
+                return m.get("value")
+
+    for o in root.findall("object"):
+        info["objects"][int(o.get("id"))] = meta(o, "name")
+        for p in o.findall("part"):
+            info["parts"][int(p.get("id"))] = meta(p, "name")
+    for pl in root.findall("plate"):
+        plate_id = int(meta(pl, "plater_id") or 0)
+        for mi in pl.findall("model_instance"):
+            info["plates"][int(meta(mi, "object_id"))] = plate_id
+    return info
+
+
+def load_3mf_parts(path):
+    """
+    Unique-by-build-item inventory of every mesh body in a 3MF. Source frame = object frame with the
+    component transform applied (what the designer authored); the build-plate item transform is only recorded.
+    """
+    z = zipfile.ZipFile(path)
+    root, objs = _read_objects(z.read("3D/3dmodel.model"))
+    scale = UNIT_TO_MM.get(root.get("unit", "millimeter"), 1.0)
+    info = _bambu_settings(z)
+    ext_cache = {}
+
+    def ext_objects(p):
+        p = p.lstrip("/")
+        if p not in ext_cache:
+            ext_cache[p] = _read_objects(z.read(p))[1]
+        return ext_cache[p]
+
+    parts = []
+    for item in root.iter(NS_CORE + "item"):
+        oid = int(item.get("objectid"))
+        item_T = _matrix(item.get("transform"))
+        obj = objs[oid]
+        comps = [(None, oid, np.eye(4))] if obj["mesh"] is not None else obj["components"]
+        for cpath, cid, T in comps:
+            src = objs if cpath is None else ext_objects(cpath)
+            mesh = src[cid]["mesh"]
+            if mesh is None:
+                sys.stderr.write(f"WARNING: object {cid} in {cpath} has no mesh (nested components unsupported); skipped\n")
+                continue
+            mesh = mesh.copy()
+            mesh.apply_transform(T)
+            mesh.apply_scale(scale)
+            parts.append({
+                "name": info["parts"].get(cid) or info["objects"].get(oid) or f"object_{oid}_{cid}",
+                "plate": info["plates"].get(oid),
+                "parent_object_name": info["objects"].get(oid),
+                "source_object": {"file": cpath, "object_id": cid, "build_object_id": oid},
+                "component_transform": T.tolist(),
+                "item_transform": item_T.tolist(),
+                "mesh": mesh,
+            })
+    return parts
+
+
+def design_frame(mesh, mode="auto"):
+    """
+    4x4 source->design transform. auto: snap to the axis-aligned box (or the oriented box if the part is skewed),
+    thinnest axis -> Z (rod-like parts: longest axis -> Z), longest remaining -> Y, XY centred, bottom at Z=0.
+    shortcut: Z sign comes from the source frame (flip is not guessed), use --frame source or edit if upside-down.
+    """
+    R = np.eye(3)
+    if mode == "auto":
+        obb = mesh.bounding_box_oriented
+        if mesh.bounding_box.volume > obb.volume * 1.02:
+            R = np.array(obb.primitive.transform)[:3, :3]
+    ext = np.ptp(mesh.vertices @ R, axis=0)
+    M = R
+    if mode == "auto":
+        o = np.argsort(ext)  # thin .. long
+        rod = ext[o[1]] < 1.05 * ext[o[0]] and ext[o[2]] > 1.5 * ext[o[1]]
+        ix, iy, iz = (o[0], o[1], o[2]) if rod else (o[1], o[2], o[0])
+        M = R[:, [ix, iy, iz]]
+        if np.linalg.det(M) < 0:
+            M[:, 0] *= -1.0
+    pts = mesh.vertices @ M
+    T = np.eye(4)
+    T[:3, :3] = M.T
+    T[:3, 3] = [-(pts[:, 0].min() + pts[:, 0].max()) / 2.0, -(pts[:, 1].min() + pts[:, 1].max()) / 2.0, -pts[:, 2].min()]
+    return T
+
+
+def planar_fraction(mesh, tol_deg=3.0):
+    """Share of surface area lying on faces parallel to a design axis plane (CAD-like vs organic)."""
+    aligned = (np.abs(mesh.face_normals) > math.cos(math.radians(tol_deg))).any(axis=1)
+    return float(mesh.area_faces[aligned].sum() / max(mesh.area, 1e-9))
+
+
+def same_geometry(a, b, tol=0.02):
+    """True if design-frame meshes a and b coincide under identity or a proper 180-degree flip (mirrors do NOT match)."""
+    if len(a.faces) != len(b.faces) or np.abs(a.extents - b.extents).max() > tol:
+        return False
+    if abs(a.area - b.area) > 1e-3 * max(a.area, 1e-9):
+        return False
+    ctr = a.bounds.mean(axis=0)
+    idx = np.linspace(0, len(a.vertices) - 1, min(3000, len(a.vertices))).astype(int)
+    tree_a = cKDTree(a.vertices)
+    for flip in ([1, 1, 1], [-1, -1, 1], [-1, 1, -1], [1, -1, -1]):
+        vb = (b.vertices - ctr) * np.array(flip) + ctr
+        if tree_a.query(vb[idx])[0].max() < tol and cKDTree(vb).query(a.vertices[idx])[0].max() < tol:
+            return True
+    return False
+
+
+def slug(name):
+    return re.sub(r"[^A-Za-z0-9]+", "_", name).strip("_") or "part"
+
+
+def analyze_unique_part(design_mesh, clean_name, out_dir):
+    """Z-tier / primitive / pattern analysis in the design frame (Z = thin axis)."""
+    tiers = detect_z_tiers(design_mesh)
+    is_turned, half_prof = detect_axisymmetry(design_mesh, tiers)
+    for t_idx, tier in enumerate(tiers):
+        dxf_path = out_dir / f"{clean_name}_tier_{t_idx}_z{tier['z_start_mm']}.dxf"
+        tier["primitives"] = analyze_slice(design_mesh, tier["sample_z_local"], dxf_path)
+        del tier["sample_z_local"]
+
+    pf = planar_fraction(design_mesh)
+    if is_turned:
+        archetype = "Type T: Turned / Axisymmetric (Revolve Feature)"
+    elif pf >= 0.6:
+        archetype = "Type A: Prismatic / Stepped CAD" if len(tiers) <= 4 else "Type B: Multi-tier Enclosure / Shell"
+    elif len(tiers) > 15:
+        archetype = "Type C: Organic Freeform Sculpture"
+    else:
+        archetype = "Type B: Multi-tier Enclosure / Shell"
+
+    patterns = {}
+    dominant = max(tiers, key=lambda t: t["extrude_height_mm"]) if tiers else None
+    if dominant and dominant.get("primitives"):
+        for key in ("slots", "circles"):
+            if dominant["primitives"].get(key):
+                grid = detect_grid_patterns(dominant["primitives"][key])
+                if grid:
+                    patterns[key] = grid
+    return tiers, archetype, patterns, round(pf, 3), (half_prof if is_turned else None)
+
+
+def detect_pip_subassemblies(parts, manifest_parts):
+    """
+    Identifies print-in-place (PIP) kinematic relationships and subassemblies between parts.
+    Detects parts sharing a multi-component 3MF object, or co-located parts on the same
+    plate with adjacent bounding bounds or hinge/knuckle features.
+    """
+    subassemblies = []
+    seen_part_combinations = set()
+
+    # 1. Multi-component 3MF object groups
+    parent_objs = {}
+    for p in parts:
+        src = p.get("source_object") or {}
+        b_oid = src.get("build_object_id")
+        if b_oid is not None:
+            parent_objs.setdefault(b_oid, []).append(p)
+
+    for b_oid, p_list in parent_objs.items():
+        if len(p_list) >= 2:
+            names = sorted(list(set(p["name"] for p in p_list)))
+            combo_key = tuple(names)
+            if combo_key in seen_part_combinations:
+                continue
+            seen_part_combinations.add(combo_key)
+
+            plate = p_list[0].get("plate")
+            parent_name = p_list[0].get("parent_object_name")
+            has_hinge = any(any(k in n.lower() for k in ("hinge", "knuckle", "spine", "pivot")) for n in names)
+            has_cover = any(any(k in n.lower() for k in ("cover", "front", "rear", "lid")) for n in names)
+
+            if parent_name and parent_name.lower() not in ("assembly", "model", "object", ""):
+                sub_name = slug(parent_name)
+            elif has_hinge and has_cover:
+                sub_name = "Cover_Assembly"
+            elif has_hinge:
+                sub_name = "Hinge_Assembly"
+            else:
+                sub_name = parent_name or f"Subassembly_Obj{b_oid}"
+
+            k_type = "conical_pip_hinge" if has_hinge else "articulated_assembly"
+
+            # Find matching phases in manifest_parts
+            phases = []
+            for mp in manifest_parts:
+                mp_names = {inst["name"] for inst in mp["instances"]}
+                if mp_names.intersection(set(names)):
+                    phases.append(mp["phase"])
+
+            subassemblies.append({
+                "subassembly_id": f"pip_{len(subassemblies)+1:02d}_{slug(sub_name)}",
+                "name": sub_name,
+                "plate": plate,
+                "parts": names,
+                "phases": sorted(list(set(phases))),
+                "kinematic_type": k_type,
+                "recommended_occurrence": sub_name,
+                "scoping_rule": f"Encapsulate inside parent occurrence '{sub_name}'; strictly isolate occurrence rebuilds.",
+            })
+
+    # 2. Co-located parts on the same plate (spatial proximity / interleaving)
+    plates = {}
+    for p in parts:
+        pl = p.get("plate")
+        if pl is not None:
+            plates.setdefault(pl, []).append(p)
+
+    for pl, p_list in plates.items():
+        if len(p_list) < 2:
+            continue
+        existing_sub_parts = {name for sub in subassemblies if sub["plate"] == pl for name in sub["parts"]}
+        uncovered = [p for p in p_list if p["name"] not in existing_sub_parts]
+        if len(uncovered) >= 2:
+            n_unc = len(uncovered)
+            adj = {i: [] for i in range(n_unc)}
+            for i in range(n_unc):
+                bi = uncovered[i]["mesh"].bounds
+                for j in range(i + 1, n_unc):
+                    bj = uncovered[j]["mesh"].bounds
+                    overlap = np.all(bi[0] <= bj[1] + 2.0) and np.all(bj[0] <= bi[1] + 2.0)
+                    if overlap:
+                        adj[i].append(j)
+                        adj[j].append(i)
+
+            visited = set()
+            for i in range(n_unc):
+                if i not in visited:
+                    comp_indices = []
+                    q = [i]
+                    visited.add(i)
+                    while q:
+                        curr = q.pop(0)
+                        comp_indices.append(curr)
+                        for neighbor in adj[curr]:
+                            if neighbor not in visited:
+                                visited.add(neighbor)
+                                q.append(neighbor)
+
+                    if len(comp_indices) >= 2:
+                        grp = [uncovered[idx] for idx in comp_indices]
+                        names = sorted(list(set(p["name"] for p in grp)))
+                        combo_key = tuple(names)
+                        if combo_key in seen_part_combinations:
+                            continue
+                        seen_part_combinations.add(combo_key)
+
+                        has_hinge = any(any(k in n.lower() for k in ("hinge", "knuckle", "spine", "pivot")) for n in names)
+                        k_type = "conical_pip_hinge" if has_hinge else "interlocking_pip"
+                        sub_name = "Cover_Assembly" if has_hinge else f"Plate_{pl}_Assembly"
+                        phases = []
+                        for mp in manifest_parts:
+                            mp_names = {inst["name"] for inst in mp["instances"]}
+                            if mp_names.intersection(set(names)):
+                                phases.append(mp["phase"])
+                        subassemblies.append({
+                            "subassembly_id": f"pip_{len(subassemblies)+1:02d}_{slug(sub_name)}",
+                            "name": sub_name,
+                            "plate": pl,
+                            "parts": names,
+                            "phases": sorted(list(set(phases))),
+                            "kinematic_type": k_type,
+                            "recommended_occurrence": sub_name,
+                            "scoping_rule": f"Encapsulate inside parent occurrence '{sub_name}'; strictly isolate occurrence rebuilds.",
+                        })
+
+    return subassemblies
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Deep CAD metrology & reverse-engineering engine for 3MF / STL meshes."
+        description="3MF / STL inventory + metrology: unique named parts, design frame, duplicate grouping."
     )
     parser.add_argument("input_file", help="Path to input .3mf or .stl file")
-    parser.add_argument("--out-dir", default="./extracted_3mf", help="Output directory for manifests and scripts")
-    parser.add_argument("--no-script", action="store_true", help="Skip generating reconstruct_fusion.py")
+    parser.add_argument("--out-dir", default="./extracted_3mf", help="Output directory for manifest and STLs")
+    parser.add_argument("--frame", choices=["auto", "source"], default="auto",
+                        help="auto: thin axis -> Z design frame; source: keep source axes (only centre / drop to Z=0)")
+    parser.add_argument("--emit-seed-script", action="store_true",
+                        help="Also write the outline-only reconstruct_<part>.py seed (off by default: oversimplifies)")
     args = parser.parse_args()
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-
     input_path = Path(args.input_file)
     if not input_path.exists():
         sys.stderr.write(f"File not found: {input_path}\n")
         sys.exit(1)
 
-    scene_or_mesh = trimesh.load(str(input_path), force="scene")
-    manifest = {"source_file": str(input_path), "parts": []}
+    if input_path.suffix.lower() == ".3mf":
+        parts = load_3mf_parts(input_path)
+    else:
+        mesh = trimesh.load(str(input_path), force="mesh")
+        parts = [{"name": input_path.stem, "plate": None, "source_object": None,
+                  "component_transform": None, "item_transform": None, "mesh": mesh}]
+    if not parts:
+        sys.stderr.write("No mesh bodies found.\n")
+        sys.exit(1)
 
-    part_counter = 0
-    for geom_name, mesh in scene_or_mesh.geometry.items():
-        sub_meshes = mesh.split(only_watertight=False)
-        if not sub_meshes:
-            sub_meshes = [mesh]
+    for p in parts:
+        p["T"] = design_frame(p["mesh"], args.frame)
+        p["design"] = p["mesh"].copy()
+        p["design"].apply_transform(p["T"])
 
-        for sub_idx, sub in enumerate(sub_meshes):
-            if len(sub.faces) < 12:
-                continue
-            part_counter += 1
-            clean_name = f"part_{part_counter:02d}_{input_path.stem}_{sub_idx}"
+    # One unique geometry = one phase; geometric duplicates are instances of the first occurrence.
+    groups = []
+    for p in parts:
+        for g in groups:
+            if same_geometry(g[0]["design"], p["design"]):
+                g.append(p)
+                break
+        else:
+            groups.append([p])
 
-            # Align bottom to Z=0 and center XY at (0, 0)
-            sub = sub.copy()
-            min_b, max_b = sub.bounds
-            center_xy = 0.5 * (min_b[:2] + max_b[:2])
-            sub.apply_translation([-center_xy[0], -center_xy[1], -min_b[2]])
+    manifest = {"source_file": str(input_path), "frame": args.frame, "parts": []}
+    for gi, g in enumerate(groups, 1):
+        rep = g[0]
+        clean_name = f"part_{gi:02d}_{slug(rep['name'])}"
+        src_stl, design_stl = out_dir / f"{clean_name}.source.stl", out_dir / f"{clean_name}.design.stl"
+        rep["mesh"].export(str(src_stl))
+        rep["design"].export(str(design_stl))
 
-            stl_path = out_dir / f"{clean_name}.stl"
-            sub.export(str(stl_path))
+        tiers, archetype, patterns, pf, half_prof = analyze_unique_part(rep["design"], clean_name, out_dir)
+        part_info = {
+            "part_id": clean_name,
+            "phase": gi,
+            "name": rep["name"],
+            "stl_file": design_stl.name,
+            "stl_source_file": src_stl.name,
+            "archetype": archetype,
+            "extents_xyz_mm": [round(float(x), 3) for x in rep["design"].extents],
+            "source_extents_mm": [round(float(x), 3) for x in rep["mesh"].extents],
+            "design_frame": rep["T"].tolist(),
+            "volume_mm3": round(float(rep["design"].volume), 2) if rep["design"].is_watertight else None,
+            "is_watertight": bool(rep["design"].is_watertight),
+            "shell_count": len(rep["design"].split(only_watertight=False)),
+            "planar_fraction": pf,
+            "n_faces": int(len(rep["design"].faces)),
+            "instances": [{k: p[k] for k in ("name", "plate", "source_object", "component_transform", "item_transform")}
+                          for p in g],
+            "patterns": patterns,
+            "z_tiers": tiers,
+        }
+        if half_prof:
+            part_info["revolve_half_profile"] = half_prof
+        if args.emit_seed_script:
+            script_path = out_dir / f"reconstruct_{clean_name}.py"
+            generate_fusion_script(part_info, script_path)
+            part_info["reconstruction_script"] = script_path.name
+        manifest["parts"].append(part_info)
 
-            tiers = detect_z_tiers(sub)
-            is_turned, half_prof = detect_axisymmetry(sub, tiers)
+    # Detect Print-in-Place (PIP) kinematic subassemblies
+    pip_subassemblies = detect_pip_subassemblies(parts, manifest["parts"])
+    if pip_subassemblies:
+        manifest["pip_subassemblies"] = pip_subassemblies
 
-            # Analyze each tier
-            for t_idx, tier in enumerate(tiers):
-                dxf_path = out_dir / f"{clean_name}_tier_{t_idx}_z{tier['z_start_mm']}.dxf"
-                slice_data = analyze_slice(sub, tier["sample_z_local"], dxf_path)
-                tier["primitives"] = slice_data
-                del tier["sample_z_local"]
-
-            # Classify archetype
-            if is_turned:
-                archetype = "Type T: Turned / Axisymmetric (Revolve Feature)"
-            elif len(tiers) <= 4:
-                archetype = "Type A: Prismatic / Stepped CAD"
-            elif len(tiers) <= 15:
-                archetype = "Type B: Multi-tier Enclosure / Shell"
-            else:
-                archetype = "Type C: Organic Freeform Sculpture"
-
-            # Check for patterns across primitives on dominant plateau tier
-            patterns = {}
-            dominant_tier = max(tiers, key=lambda t: t["extrude_height_mm"]) if tiers else None
-            if dominant_tier and dominant_tier.get("primitives"):
-                p_dom = dominant_tier["primitives"]
-                if p_dom.get("slots"):
-                    grid = detect_grid_patterns(p_dom["slots"])
-                    if grid:
-                        patterns["slots"] = grid
-                if p_dom.get("circles"):
-                    grid = detect_grid_patterns(p_dom["circles"])
-                    if grid:
-                        patterns["circles"] = grid
-
-            part_info = {
-                "part_id": clean_name,
-                "stl_file": stl_path.name,
-                "archetype": archetype,
-                "extents_xyz_mm": [round(float(x), 3) for x in sub.extents],
-                "volume_mm3": round(float(sub.volume), 2) if sub.is_watertight else None,
-                "is_watertight": bool(sub.is_watertight),
-                "patterns": patterns,
-                "z_tiers": tiers
-            }
-            if is_turned:
-                part_info["revolve_half_profile"] = half_prof
-
-            # Generate ready-to-run Fusion Python script
-            if not args.no_script:
-                script_path = out_dir / f"reconstruct_{clean_name}.py"
-                generate_fusion_script(part_info, script_path)
-                part_info["reconstruction_script"] = script_path.name
-
-            manifest["parts"].append(part_info)
-
-    manifest_path = out_dir / "manifest.json"
-    with open(manifest_path, "w") as f:
+    with open(out_dir / "manifest.json", "w") as f:
         json.dump(manifest, f, indent=2)
 
-    print(f"Extracted {len(manifest['parts'])} discrete parts with CAD primitives to {out_dir}/manifest.json")
+    print(f"{len(parts)} bodies -> {len(groups)} unique phases ({out_dir}/manifest.json)")
+    if pip_subassemblies:
+        print("\n--- Proposed Print-in-Place (PIP) Kinematic Subassemblies ---")
+        for sub in pip_subassemblies:
+            p_str = ", ".join(sub["parts"])
+            ph_str = ", ".join(f"Phase {p}" for p in sub["phases"])
+            pl_str = f"Plate {sub['plate']}" if sub.get("plate") is not None else "Multi-plate"
+            print(f"  * {sub['name']} ({pl_str}): [{p_str}] -> ({ph_str})")
+            print(f"    Type: {sub['kinematic_type']}")
+            print(f"    Scoping: {sub['scoping_rule']}")
+        print()
+
+    print(f"{'phase':<6}{'name':<14}{'archetype':<34}{'design extents X x Y x Z mm':<30}{'inst':<5}plates")
+    for pi in manifest["parts"]:
+        ex = " x ".join(f"{v:.2f}" for v in pi["extents_xyz_mm"])
+        names = ",".join(i["name"] for i in pi["instances"])
+        plates = ",".join(sorted({str(i["plate"]) for i in pi["instances"]}))
+        print(f"{pi['phase']:<6}{pi['name']:<14}{pi['archetype'][:32]:<34}{ex:<30}{len(pi['instances']):<5}{plates}  [{names}]")
 
 
 if __name__ == "__main__":

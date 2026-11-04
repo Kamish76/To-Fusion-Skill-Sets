@@ -14,12 +14,13 @@
   "license": "MIT",
   "skills": {
     "3mf-to-fusion": {
-      "version": "1.0.0",
+      "version": "1.1.0",
       "name": "3mf-to-fusion",
-      "description": "Advanced CAD reverse-engineering engine for 3MF and STL files. Extracts ground-truth STLs, stages raw meshes in-CAD for multi-perspective metrology, slices and mathematically analyzes geometry (cross sections, true circumscribed circle radii, obround slots, hex pockets, turned profiles, pattern arrays), and synthesizes 100% native, editable parametric BRep solid bodies in Autodesk Fusion 360 via the Fusion 360 MCP server with translucent ghost overlay verification.",
+      "description": "Advanced CAD reverse-engineering engine for 3MF and STL files. Extracts ground-truth STLs, performs evidence-first multi-axis sectioning and batched metrology (X/Y/Z section packs, 45\u00b0 rails, obround slots, guide pins, card bezels), enforces per-part phased feature ledgers, and synthesizes 100% native parametric BRep solid bodies in Autodesk Fusion 360 with quantitative slice-diff and translucent ghost verification.",
       "entrypoint": "skills/3mf-to-fusion/SKILL.md",
       "scripts": [
-        "skills/3mf-to-fusion/scripts/inspect_3mf.py"
+        "skills/3mf-to-fusion/scripts/inspect_3mf.py",
+        "skills/3mf-to-fusion/scripts/section_pack.py"
       ],
       "dependencies": [
         "numpy>=2.0.0",
@@ -30,7 +31,7 @@
         "fast_simplification>=0.2.0",
         "mapbox_earcut>=2.1.0"
       ],
-      "last_modified": "2026-11-03"
+      "last_modified": "2026-11-04"
     },
     "media-to-fusion": {
       "version": "1.0.0",
@@ -61,5 +62,5 @@
     "rules/fusion-autonomous-cad-rules.md",
     "rules/model-isolation-rules.md"
   ],
-  "last_updated": "2026-11-03T22:15:17.450148"
+  "last_updated": "2026-11-04T13:19:54.628689"
 }
