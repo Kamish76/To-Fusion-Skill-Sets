@@ -101,3 +101,29 @@ When exploring design options or alternative geometries:
 - Model candidate variations in an isolated showroom component.
 - Hide rejected or superseded bodies using `body.isLightBulbOn = False`.
 - **Never call `body.deleteMe()`** on features that might break downstream sketches or projections in the Fusion 360 timeline.
+
+
+---
+
+## 9. In-Place Editing Mandate (Ban on Nuke-and-Pave)
+> [!IMPORTANT]
+> **Strictly Forbidden:** Never wipe an existing model, component, or occurrences (`child.deleteMe()` or deleting all bodies) to apply a design edit. Rebuilding models from line 1 destroys the parametric timeline, breaks assembly joints, invalidates downstream projections, and introduces 100x execution latency.
+>
+> **Mandatory 4-Tier In-Place Editing Hierarchy:**
+> 1. **Tier 1 (Parametric Tweak — < 50ms):** Modify driving user parameters (`design.userParameters.itemByName`) or feature dimensions (`extrude.extentOne.distance.expression`) in-place. Zero new timeline nodes.
+> 2. **Tier 2 (Timeline Rollback Surgery — < 200ms):** Roll marker back to target feature (`timelineObject.rollTo(False)`), update sketch geometry or feature inputs, and advance marker to end (`design.timeline.moveToEnd()`).
+> 3. **Tier 3 (Localized Downstream Append — < 300ms):** Query target body face spatially and append a single localized feature (pocket cut, hole, magnet pocket, chamfer) at the end of the timeline without re-running earlier steps.
+> 4. **Tier 4 (Scoped Sub-Component Replacement):** If a part requires radical topological redesign, isolate cleanup strictly to that child occurrence. Never touch sibling components or parent assemblies.
+>
+> **Post-Edit Health Diagnostic:**
+> Every edit script MUST query `timelineObject.healthState`. If any downstream feature turns yellow (`WarningFeatureHealthState`) or red (`ErrorFeatureHealthState`), immediately auto-revert the parameter and report diagnostics.
+
+---
+
+## 10. Model-Level ICM Context & Memory Discipline
+Every discrete model directory must maintain persistent context to eliminate memory loss:
+- **`CONTEXT.md`:** System intent, kinematic tree, and reference media index.
+- **`SPEC.md`:** Physical bounding envelope, tolerances, and hardware BOM.
+- **`DECISIONS.md`:** Architectural Decision Records (ADRs) logging clearance and mechanical trade-offs.
+- **`TIMELINE.md`:** Chronological log of user prompts, targeted features, and health verification status.
+- **`assets/references/`:** Safe harbor for all user-uploaded photos, diagrams, and reference 3MF files.

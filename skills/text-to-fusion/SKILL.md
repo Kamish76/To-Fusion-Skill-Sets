@@ -83,6 +83,25 @@ When the user asks for design options ("give me option 2", "try a version with n
 
 ---
 
+## Phase 2.5: In-Place Surgical Editing (Ban on Rebuilding)
+
+When the user dictates modifications to an existing model ("make the slot 2mm wider", "deepen the finger tab", "add captive magnet pockets"):
+> [!IMPORTANT]
+> **NEVER WIPE AND REBUILD:** Do NOT call `child.deleteMe()` or re-execute the full generation script. Apply changes surgically via the 4-tier in-place editing tools in `tools/fusion_editor/`:
+
+1. **Introspect First:**
+   Execute `tools/fusion_editor/inspect_model.py` to identify component names, bodies, bounding boxes in mm, driving parameters, and timeline indices.
+2. **Apply the 4-Tier Hierarchy:**
+   - **Tier 1 (Parametric Tweak — < 50ms):** Modify driving parameters via `tools/fusion_editor/edit_parameter.py` (e.g. `Extrude10.distance = "4.0 mm"`).
+   - **Tier 2 (Timeline Rollback Surgery — < 200ms):** Roll marker to earlier feature via `tools/fusion_editor/rollback_edit.py`, adjust sketch/extrude inputs, and advance marker to end.
+   - **Tier 3 (Localized Downstream Append — < 300ms):** Query target body face and append cut/pocket/magnet hole via `tools/fusion_editor/append_feature.py`.
+   - **Tier 4 (Scoped Subassembly Swap):** Only replace the single child component occurrence if a radical topological overhaul is required.
+3. **Verify Health & Log Audit:**
+   - Run `tools/fusion_editor/timeline_doctor.py` to ensure zero yellow/red timeline errors.
+   - Run `python3 tools/log_model_edit.py --model <name> --prompt "<prompt>" --tier <1-4>` to record the prompt, delta, and ADR into the model's `TIMELINE.md` and `DECISIONS.md`.
+
+---
+
 ## Phase 3: Standard Fasteners & Hardware BOM Synthesis
 
 When the user asks for screws, nuts, or assembly hardware:
