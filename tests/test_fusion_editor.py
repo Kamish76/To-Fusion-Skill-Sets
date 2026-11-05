@@ -125,16 +125,57 @@ class TestFusionEditorTools(unittest.TestCase):
         self.assertIn("timeline.moveToEnd()", script)
 
     def test_append_feature_script_generation(self):
-        script = generate_append_script(
+        script_mag = generate_append_script(
             comp_name="TopSlider",
             body_name="Body1",
             op_type="magnet_pocket",
             face_normal="+Z",
             op_params={"dia_mm": 8.20, "depth_mm": 3.10}
         )
-        self.assertIn('comp_name = "TopSlider"', script)
-        self.assertIn('body_name = "Body1"', script)
-        self.assertIn("CutFeatureOperation", script)
+        self.assertIn('comp_name = "TopSlider"', script_mag)
+        self.assertIn('body_name = "Body1"', script_mag)
+        self.assertIn("CutFeatureOperation", script_mag)
+
+        # Test pocket_cut uses native addTwoPointRectangle
+        script_pocket = generate_append_script(
+            comp_name="TopSlider",
+            body_name="Body1",
+            op_type="pocket_cut",
+            face_normal="+Z",
+            op_params={"width_mm": 20.0, "depth_mm": 10.0, "cut_depth_mm": 2.0}
+        )
+        self.assertIn("addTwoPointRectangle", script_pocket)
+        self.assertNotIn("lines.add(", script_pocket)
+
+    def test_hyphenated_model_index_and_ambiguity(self):
+        from tools.scaffold_model import get_next_model_index
+        from tools.log_model_edit import resolve_model_dir
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            models_dir = Path(tmp_dir) / "models"
+            models_dir.mkdir()
+            (models_dir / "01-first-hyphen").mkdir()
+            (models_dir / "02_second_underscore").mkdir()
+            (models_dir / "03-third-hyphen").mkdir()
+
+            next_idx = get_next_model_index(str(models_dir))
+            self.assertEqual(next_idx, 4)
+
+            # Test ambiguity check
+            (models_dir / "02_second_underscore" / "SPEC.md").write_text("# Spec", encoding="utf-8")
+            (models_dir / "03-third-hyphen" / "SPEC.md").write_text("# Spec", encoding="utf-8")
+
+            with self.assertRaises(ValueError):
+                # 'hyphen' matches both 01 and 03
+                import os
+                old_env = os.environ.get("CAD_MONOREPO_ROOT")
+                os.environ["CAD_MONOREPO_ROOT"] = tmp_dir
+                try:
+                    resolve_model_dir("hyphen")
+                finally:
+                    if old_env:
+                        os.environ["CAD_MONOREPO_ROOT"] = old_env
+                    else:
+                        os.environ.pop("CAD_MONOREPO_ROOT", None)
 
     def test_scaffold_model_and_audit_logging(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
