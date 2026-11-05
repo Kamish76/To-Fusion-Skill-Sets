@@ -111,15 +111,9 @@ def run(context):
             cy = params.get("center_y_mm", 0.0) / 10.0
 
             # Sketch centered rectangle on face plane
-            lines = sk.sketchCurves.sketchLines
             p1 = adsk.core.Point3D.create(cx - w/2, cy - d/2, 0)
-            p2 = adsk.core.Point3D.create(cx + w/2, cy - d/2, 0)
-            p3 = adsk.core.Point3D.create(cx + w/2, cy + d/2, 0)
-            p4 = adsk.core.Point3D.create(cx - w/2, cy + d/2, 0)
-            lines.add(p1, p2)
-            lines.add(p2, p3)
-            lines.add(p3, p4)
-            lines.add(p4, p1)
+            p2 = adsk.core.Point3D.create(cx + w/2, cy + d/2, 0)
+            sk.sketchCurves.sketchLines.addTwoPointRectangle(p1, p2)
 
             prof = sk.profiles.item(sk.profiles.count - 1)
             ext_input = target_comp.features.extrudeFeatures.createInput(
