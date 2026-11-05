@@ -47,10 +47,11 @@ def get_next_model_index(models_dir):
         return 1
     existing = [d for d in os.listdir(models_dir) if os.path.isdir(os.path.join(models_dir, d))]
     indices = []
+    import re
     for d in existing:
-        prefix = d.split('_')[0]
-        if prefix.isdigit():
-            indices.append(int(prefix))
+        m = re.match(r"^(\d+)", d)
+        if m:
+            indices.append(int(m.group(1)))
     return max(indices) + 1 if indices else 1
 
 def scaffold_model_directory(

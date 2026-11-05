@@ -18,18 +18,24 @@ from tools.scaffold_model import find_monorepo_root
 
 def resolve_model_dir(model_input: str) -> str:
     path = Path(model_input).resolve()
-    if path.is_dir() and (path / "CONTEXT.md").exists():
-        return str(path)
-    if path.is_dir() and (path / "SPEC.md").exists():
+    if path.is_dir() and ((path / "CONTEXT.md").exists() or (path / "SPEC.md").exists()):
         return str(path)
 
     # Search in CAD_MONOREPO_ROOT or standard paths
     root = find_monorepo_root()
     models_dir = Path(root) / "models"
     if models_dir.exists():
+        # 1. Exact match first
         for d in models_dir.iterdir():
-            if d.is_dir() and (model_input.lower() in d.name.lower()):
+            if d.is_dir() and d.name.lower() == model_input.lower():
                 return str(d.resolve())
+        # 2. Substring match with ambiguity validation
+        matches = [d for d in models_dir.iterdir() if d.is_dir() and model_input.lower() in d.name.lower()]
+        if len(matches) == 1:
+            return str(matches[0].resolve())
+        elif len(matches) > 1:
+            match_names = [d.name for d in matches]
+            raise ValueError(f"Ambiguous model name '{model_input}'. Multiple matches found: {', '.join(match_names)}")
 
     raise FileNotFoundError(f"Could not locate model folder for '{model_input}'")
 
