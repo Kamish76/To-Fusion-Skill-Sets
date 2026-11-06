@@ -15,18 +15,24 @@ The root directory of any CAD monorepo or project MUST remain spotless:
 
 ---
 
-## 2. Standard Model Directory Structure
-Every discrete mechanical model or project must be housed in a numbered folder under `models/`:
+## 2. Standard Model Directory Structure (Model-Level ICM)
+Every discrete mechanical model or project must be housed in a numbered folder under `models/` adhering to the 4-pillar CAD-ICM context standard:
 ```text
 models/<NN>_<Model_Name>/
+├── CONTEXT.md                  # Master context: design intent, kinematic tree, reference index
 ├── SPEC.md                     # Engineering constraints, envelope, BOM, target kinematics
+├── DECISIONS.md                # Architectural Decision Records (ADRs) & mechanical trade-offs
+├── TIMELINE.md                 # Chronological log of user prompts, dictated edits, and health
 ├── README.md                   # Model summary and quickstart build instructions
 ├── GEMINI.md / CLAUDE.md       # Model-specific agent routing and helper imports
-├── scripts/                    # Python build, animation, and export scripts
-│   ├── build_model.py          # Primary Fusion 360 parametric solid generator
-│   └── generate_animation.py   # Occurrence matrix kinematic animator
+├── assets/                     # Safe persistent storage for media & reference files
+│   ├── references/             # User sketches, photos, reference 3MF/STL, datasheets
+│   └── renders/                # Viewport captures, diffs, inspection screenshots
 ├── docs/                       # Calculation sheets, dimension drawings, exploded views
-├── renders/                    # Viewport screenshots, inspection photos, animated GIFs
+├── scripts/                    # Python build, surgical edit, and animation scripts
+│   ├── build_model.py          # Primary Fusion 360 parametric baseline generator
+│   ├── edits/                  # Log of surgical edit scripts applied
+│   └── generate_animation.py   # Occurrence matrix kinematic animator
 └── workspace/                  # Scratch files, CV contours, sliced 3MF manifests (gitignored)
     ├── media/                  # process_media.py outputs
     └── extracted_cad/          # inspect_3mf.py outputs
