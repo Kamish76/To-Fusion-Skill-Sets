@@ -41,6 +41,7 @@ When the user describes a mechanical object, part, modification, accessory tray,
 3. **Domain References**:
    Consult the local reference library before writing custom geometry:
    - `references/prompt-to-geometry-patterns.md` — Translates natural language into parametric sketch constraints.
+   - `references/kinematic-linkages.md` — Burmester 4-bar synthesis, hyperplane separation, coplanar U-cradles, and SE(3) transforms.
    - `references/exploded-view-guidelines.md` — Explosion vectors, golden guide rods, and orthographic framing.
    - `references/assembly-animation-pipeline.md` — Matrix3D occurrence transform animation and GIF compilation.
    - `references/variant-management-and-undo.md` — Safe A/B variant showrooming and non-destructive hiding.

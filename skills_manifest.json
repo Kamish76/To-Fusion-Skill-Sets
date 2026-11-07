@@ -46,7 +46,7 @@
         "numpy>=2.0.0",
         "ezdxf>=1.4.0"
       ],
-      "last_modified": "2026-11-06"
+      "last_modified": "2026-11-07"
     },
     "text-to-fusion": {
       "version": "1.0.0",
@@ -57,12 +57,12 @@
         "skills/text-to-fusion/scripts/scaffold_text_model.py"
       ],
       "dependencies": [],
-      "last_modified": "2026-11-05"
+      "last_modified": "2026-11-07"
     }
   },
   "rulesets": [
     "rules/fusion-autonomous-cad-rules.md",
     "rules/model-isolation-rules.md"
   ],
-  "last_updated": "2026-11-06T20:36:10.783951"
+  "last_updated": "2026-11-07T22:34:02.676225"
 }

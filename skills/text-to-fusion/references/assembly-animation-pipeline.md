@@ -1,6 +1,6 @@
 # Assembly Animation & Dynamic Kinematics Pipeline
 
-A high-performance pipeline for compiling smooth, 60fps-equivalent animated GIFs of parts driving into place without Fusion 360 timeline rebuild delays.
+A high-performance pipeline for compiling smooth, 60fps-equivalent animated GIFs of parts driving into place and continuous 3D collision sweeps without Fusion 360 timeline rebuild delays.
 
 ---
 
@@ -71,3 +71,27 @@ Use `PIL.Image` to build a seamless ping-pong loop with generous holds:
 - **Total Loop Duration:** $\approx 4.8\text{ seconds}$.
 - **Palette Optimization:** Quantize using `f.quantize(colors=128, method=Image.Resampling.LANCZOS, dither=Image.Dither.FLOYDSTEINBERG)`. Compresses down to ~`2.3 MB` with sharp edges and zero color banding.
 - **Cache-Busting Rule:** In chat environments, always generate with unique/versioned filenames (e.g., `_final.gif`, `_v2.gif`) to bypass browser image caching.
+
+---
+
+## 5. Ephemeral `Kinematic_Stage` & Multi-Frame 3D BRep Interference Verification
+
+To verify that mechanisms do not collide mid-stroke:
+1. Create a temporary occurrence `stage_occ = container.occurrences.addNewComponent(Matrix3D.create())`.
+2. Populate rigid subassemblies into child occurrences (`Ground_Group`, `Tier2_Group`, `Bar1_Group`, etc.) using `copyPasteBodies`.
+3. Step through intermediate states $s \in \{0.00, 0.25, 0.50, 0.75, 1.00\}$ and evaluate:
+   ```python
+   inp = design.createInterferenceInput(stage_bodies)
+   inp.areCoincidentFacesIncluded = False
+   results = design.analyzeInterference(inp)
+   for r in results:
+       if r.interferenceBody.volume * 1000.0 > 3.0: # Filter coincident face noise
+           print(f"COLLISION: {r.entityOne.name} <-> {r.entityTwo.name}")
+   ```
+4. Call `stage_occ.deleteMe()` immediately after verification to leave the parametric timeline pristine.
+
+---
+
+## 6. Zero-Dependency Windows PowerShell `.NET` GIF Compiler Fallback
+
+When `PIL` / `Pillow` or `ffmpeg` are not installed in the Python environment, invoke the native Windows Presentation Framework (`System.Windows.Media.Imaging.GifBitmapEncoder`) with binary `NETSCAPE2.0` looping block and Graphic Control Extension (GCE) delay splicing (`shared/scene_animator.py` `compile_ping_pong_gif_powershell`). This provides a 100% zero-dependency fallback producing valid looping GIF89a animations on any Windows workstation.
