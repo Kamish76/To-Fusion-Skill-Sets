@@ -45,7 +45,8 @@
         "opencv-python>=4.10.0",
         "numpy>=2.0.0",
         "ezdxf>=1.4.0"
-      ]
+      ],
+      "last_modified": "2026-11-06"
     },
     "text-to-fusion": {
       "version": "1.0.0",
@@ -63,5 +64,5 @@
     "rules/fusion-autonomous-cad-rules.md",
     "rules/model-isolation-rules.md"
   ],
-  "last_updated": "2026-11-05T11:14:03.931451"
+  "last_updated": "2026-11-06T20:36:10.783951"
 }
