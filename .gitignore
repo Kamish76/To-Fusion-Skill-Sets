@@ -31,3 +31,6 @@ temp/
 build/
 dist/
 *.egg-info/
+
+# UV lock
+uv.lock

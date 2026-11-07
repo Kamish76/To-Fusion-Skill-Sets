@@ -135,3 +135,23 @@ if ui:
     ui.activeSelections.clear()
 ```
 
+
+---
+
+## 9. Mid-Stroke Mechanical Collisions & Endpoint Blind Spots
+
+### The Trap
+Checking clearance only at the static endpoints (fully collapsed $s = 0.0$ and fully opened $s = 1.0$) misses dynamic collisions that occur only during movement (e.g. at $s = 0.35$ as links swing through intermediate arcs or lids dip over enclosure walls).
+
+### The Solution
+Use an ephemeral rigid-group stage (`Kinematic_Stage`) and evaluate `design.analyzeInterference()` across intermediate fractions ($s = 0.0, 0.25, 0.50, 0.75, 1.0$). Filter out mathematical face contact ($V > 3.0\text{ mm}^3$), and delete the stage non-destructively upon completion.
+
+---
+
+## 10. Missing External Dependencies for GIF Compilation on Windows
+
+### The Trap
+Executing CAD animation scripts or GIF compilation on vanilla Windows systems or within Fusion 360's embedded Python interpreter crashes with `ModuleNotFoundError: No module named 'PIL'` or missing `ffmpeg`.
+
+### The Solution
+Implement the zero-dependency Windows Presentation Foundation (`System.Windows.Media.Imaging.GifBitmapEncoder`) with binary `NETSCAPE2.0` looping block and Graphic Control Extension (GCE) delay splicing (`compile_ping_pong_gif_powershell`). It compiles native looping GIF89a animations using built-in Windows PowerShell without installing any packages.

@@ -1,10 +1,15 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Log Model Edit: Programmatically logs user-dictated edits, parameter changes,
 and mechanical decisions directly into the model's TIMELINE.md and DECISIONS.md.
 """
 import os
 import sys
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 import argparse
 from datetime import datetime
 from pathlib import Path
