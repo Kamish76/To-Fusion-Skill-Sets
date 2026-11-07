@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **[3mf-to-fusion]**: Restructure pipeline into per-part phased feature ledger, batched X/Y/Z section packs, in-CAD isolated staging, and quantitative slice diffs
 - **[3mf-to-fusion]**: Establish In-CAD Mesh-First Staging & Multi-Perspective Metrology protocol with marketing photo ban and ghost overlay verification
 ### Added
+- **[to-fusion-dev-sync]**: Dedicated developer and beta-skills sync engine for dev branch laptop handoffs
+- **[to-fusion-sync]**: Universal repository and agent runtime sync engine across workstations
 - **[text-to-fusion]**: Added kinematic-linkages.md reference, Maker's Supply M3 BOM synthesis, ephemeral Kinematic_Stage 3D BRep collision sweep, and zero-dependency PowerShell .NET GIF89a compiler fallback
 - **[media-to-fusion]**: Added Archetype 4 (Burmester 2-position 4-bar 90-deg vertical stow linkage with hyperplane separation), 2-column U-cradle routing, and Maker's Supply M3 hardware stack-up
 - **[media-to-fusion]**: Harvest stepped orthogonal linkages (FTO archetype #3) and Fusion API gotchas #5-#8 (BRep dissociation, extrude cut negation, golden translation, screenshot halos)
@@ -43,19 +45,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Reference theory: `references/kinematic-archetypes.md`, `references/fdm-hardware-tolerances.md`, and `references/fusion-api-gotchas.md`.
   - `skills/text-to-fusion`: Natural language to parametric CAD assemblies.
     - Parametric specification engine with envelope constraints, wall thicknesses, and user parameter bindings.
-    - Standardized DIN hardware BOM generation (DIN 7991 M3 countersunk screws, DIN 934 M3 captive hex pockets, retaining washers).
-    - Non-destructive showroom variant staging and A/B exploration pattern.
-    - High-speed `Occurrence.transform` Matrix3D kinematics and multi-frame animation pipeline.
-    - Reference theory: `references/prompt-to-geometry-patterns.md`, `references/exploded-view-guidelines.md`, `references/assembly-animation-pipeline.md`, and `references/variant-management-and-undo.md`.
-- **Engineering Rulesets**:
-  - `rules/fusion-autonomous-cad-rules.md`: Mandatory rules for centimeters (`cm = mm / 10.0`), pre-flight canary probes, visual self-verification loops (`get_screenshot`), and timeline hygiene.
-  - `rules/model-isolation-rules.md`: Strict project directory layout (`models/<NN>_<Model_Name>/`) and root directory cleanliness guarantees.
-  - Drop-in agent configurations:
-    - `rules/CLAUDE.md` for Anthropic Claude Code & Claude Desktop.
-    - `rules/GEMINI.md` for Google Antigravity & Gemini CLI.
-    - `rules/CURSOR_RULES.md` for Cursor & Windsurf.
-- **Portability & Distribution**:
-  - Universal Python requirements (`requirements.txt`, `pyproject.toml`) removing hardcoded system paths.
-  - One-click setup script (`setup.sh`) supporting Antigravity, Claude Code, and standalone Python environments.
-  - Local sync utility (`tools/sync_local.sh`) linking active Antigravity installations directly to this Git repository.
-  - Change tracking CLI (`tools/log_change.py`) to systematically record skill improvements, audit agent modifications, and bump versions.
