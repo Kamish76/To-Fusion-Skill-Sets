@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **[3mf-to-fusion]**: Restructure pipeline into per-part phased feature ledger, batched X/Y/Z section packs, in-CAD isolated staging, and quantitative slice diffs
 - **[3mf-to-fusion]**: Establish In-CAD Mesh-First Staging & Multi-Perspective Metrology protocol with marketing photo ban and ghost overlay verification
 ### Added
+- **[text-to-fusion]**: Added kinematic-linkages.md reference, Maker's Supply M3 BOM synthesis, ephemeral Kinematic_Stage 3D BRep collision sweep, and zero-dependency PowerShell .NET GIF89a compiler fallback
+- **[media-to-fusion]**: Added Archetype 4 (Burmester 2-position 4-bar 90-deg vertical stow linkage with hyperplane separation), 2-column U-cradle routing, and Maker's Supply M3 hardware stack-up
 - **[media-to-fusion]**: Harvest stepped orthogonal linkages (FTO archetype #3) and Fusion API gotchas #5-#8 (BRep dissociation, extrude cut negation, golden translation, screenshot halos)
 - **[text-to-fusion]**: add tools/fusion_editor/ in-place editing suite and Model-Level CAD-ICM context scaffolding
 - **[3mf-to-fusion]**: add conical PIP hinge calculator, kinematic subassembly grouping, idempotent occurrence scoping rule, and pure cylindrical modeling mandate
