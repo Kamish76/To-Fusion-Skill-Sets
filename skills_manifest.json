@@ -16,7 +16,7 @@
     "3mf-to-fusion": {
       "version": "1.1.0",
       "name": "3mf-to-fusion",
-      "description": "Advanced CAD reverse-engineering engine for 3MF and STL files. Extracts ground-truth STLs, performs evidence-first multi-axis sectioning and batched metrology (X/Y/Z section packs, 45° rails, obround slots, guide pins, card bezels), enforces per-part phased feature ledgers, and synthesizes 100% native parametric BRep solid bodies in Autodesk Fusion 360 with quantitative slice-diff and translucent ghost verification.",
+      "description": "Advanced CAD reverse-engineering engine for 3MF and STL files. Extracts ground-truth STLs, performs evidence-first multi-axis sectioning and batched metrology (X/Y/Z section packs, 45\u00b0 rails, obround slots, guide pins, card bezels), enforces per-part phased feature ledgers, and synthesizes 100% native parametric BRep solid bodies in Autodesk Fusion 360 with quantitative slice-diff and translucent ghost verification.",
       "entrypoint": "skills/3mf-to-fusion/SKILL.md",
       "scripts": [
         "skills/3mf-to-fusion/scripts/inspect_3mf.py",
@@ -68,7 +68,7 @@
         "tools/sync_manager.py"
       ],
       "dependencies": [],
-      "last_modified": "2026-11-07"
+      "last_modified": "2026-11-09"
     },
     "to-fusion-dev-sync": {
       "version": "1.0.0",
@@ -86,5 +86,5 @@
     "rules/fusion-autonomous-cad-rules.md",
     "rules/model-isolation-rules.md"
   ],
-  "last_updated": "2026-11-07T22:44:00.000000"
+  "last_updated": "2026-11-09T09:39:32.624995"
 }
