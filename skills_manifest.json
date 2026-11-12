@@ -16,11 +16,12 @@
     "3mf-to-fusion": {
       "version": "1.1.0",
       "name": "3mf-to-fusion",
-      "description": "Advanced CAD reverse-engineering engine for 3MF and STL files. Extracts ground-truth STLs, performs evidence-first multi-axis sectioning and batched metrology (X/Y/Z section packs, 45° rails, obround slots, guide pins, card bezels), enforces per-part phased feature ledgers, and synthesizes 100% native parametric BRep solid bodies in Autodesk Fusion 360 with quantitative slice-diff and translucent ghost verification.",
+      "description": "Advanced CAD reverse-engineering engine for 3MF and STL files. Extracts ground-truth STLs, performs evidence-first multi-axis sectioning and batched metrology (X/Y/Z section packs, 45\u00b0 rails, obround slots, guide pins, card bezels), enforces per-part phased feature ledgers, and synthesizes 100% native parametric BRep solid bodies in Autodesk Fusion 360 with quantitative slice-diff and translucent ghost verification.",
       "entrypoint": "skills/3mf-to-fusion/SKILL.md",
       "scripts": [
         "skills/3mf-to-fusion/scripts/inspect_3mf.py",
-        "skills/3mf-to-fusion/scripts/section_pack.py"
+        "skills/3mf-to-fusion/scripts/section_pack.py",
+        "skills/3mf-to-fusion/scripts/conical_pip_calc.py"
       ],
       "dependencies": [
         "numpy>=2.0.0",
@@ -80,11 +81,25 @@
       ],
       "dependencies": [],
       "last_modified": "2026-11-07"
+    },
+    "to-fusion-animate": {
+      "version": "1.0.0",
+      "name": "to-fusion-animate",
+      "description": "Animates Autodesk Fusion 360 assemblies, kinematic mechanisms, and exploded views via high-speed Matrix3D scene-graph transforms, runs ephemeral 3D BRep interference collision checks, and compiles looping GIF89a animations.",
+      "entrypoint": "skills/to-fusion-animate/SKILL.md",
+      "scripts": [
+        "skills/to-fusion-animate/scripts/animate_assembly.py"
+      ],
+      "dependencies": [
+        "pillow>=11.0.0"
+      ],
+      "last_modified": "2026-11-08"
     }
   },
   "rulesets": [
     "rules/fusion-autonomous-cad-rules.md",
     "rules/model-isolation-rules.md"
   ],
-  "last_updated": "2026-11-07T22:44:00.000000"
+  "last_updated": "2026-11-08T12:15:09.773142",
+  "last_released": "2026-11-08"
 }
