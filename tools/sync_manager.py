@@ -200,6 +200,59 @@ def discover_skills():
     return all_skills
 
 
+def is_link_or_junction(path: Path) -> bool:
+    """Returns True if path is a symlink or NTFS junction."""
+    if path.is_symlink():
+        return True
+    if hasattr(path, "is_junction") and path.is_junction():
+        return True
+    if platform.system() == "Windows":
+        try:
+            return bool(os.readlink(str(path)))
+        except (OSError, ValueError, AttributeError):
+            pass
+    return False
+
+
+def remove_link_or_dir(path: Path):
+    """Safely removes a link, junction, or directory."""
+    if is_link_or_junction(path):
+        try:
+            path.unlink()
+        except OSError:
+            try:
+                os.rmdir(path)
+            except OSError:
+                pass
+    elif path.exists():
+        if path.is_dir():
+            shutil.rmtree(path, ignore_errors=True)
+        else:
+            path.unlink()
+
+
+def copy_skill_dir(source_dir: Path, target_dir: Path):
+    """
+    Copies skill directory from source_dir to target_dir.
+    Ensures a real directory exists on disk for runtimes (like Antigravity on Windows)
+    that do not follow NTFS junctions.
+    """
+    target_dir = Path(target_dir)
+    source_dir = Path(source_dir).resolve()
+
+    if not source_dir.exists():
+        return False, f"Source does not exist: {source_dir}"
+
+    target_dir.parent.mkdir(parents=True, exist_ok=True)
+    remove_link_or_dir(target_dir)
+
+    try:
+        shutil.copytree(source_dir, target_dir)
+        return True, "Directory Copy"
+    except Exception as e:
+        return False, f"Directory copy failed: {e}"
+
+
 def create_dir_link(source_dir: Path, target_link: Path):
     """
     Cross-platform directory link creation.
@@ -215,7 +268,7 @@ def create_dir_link(source_dir: Path, target_link: Path):
     target_link.parent.mkdir(parents=True, exist_ok=True)
 
     # Check if target already exists
-    if target_link.is_symlink() or (hasattr(target_link, "is_junction") and target_link.is_junction()):
+    if is_link_or_junction(target_link):
         try:
             target_link.unlink()
         except OSError:
@@ -272,27 +325,34 @@ def create_dir_link(source_dir: Path, target_link: Path):
 
 
 def check_target_link(target_link: Path):
-    """Check if target_link exists and is a link."""
+    """Check if target_link exists and is a valid link or directory containing SKILL.md."""
     if not target_link.exists() and not target_link.is_symlink():
         return False, "missing"
+    if (target_link / "SKILL.md").exists():
+        if is_link_or_junction(target_link):
+            return True, "junction"
+        return True, "directory"
     if target_link.is_symlink():
         return True, "symlink"
-    # On Windows, junctions may report is_dir but not is_symlink in older Python
-    try:
-        if bool(os.readlink(str(target_link))):
-            return True, "junction"
-    except (OSError, ValueError, AttributeError):
-        pass
     if target_link.is_dir():
         return True, "folder"
     return True, "present"
 
 
-def link_all_skills():
-    """Hot-link all discovered skills into Antigravity & Claude environments."""
+def link_all_skills(mode="auto"):
+    """
+    Hot-link or copy all discovered skills into Antigravity & Claude environments.
+
+    Modes:
+      - 'auto': On Windows, copies skills to Antigravity (since Antigravity's scanner
+                ignores NTFS junctions) and links Claude. On Unix/macOS, symlinks all.
+      - 'copy': Mirrors all skills as real directories across all runtimes.
+      - 'link': Creates NTFS junctions on Windows or symlinks on Unix.
+    """
     skills = discover_skills()
     print("==========================================================")
-    print("  🔄 Hot-Linking To-Fusion Skills to AI Agent Runtimes")
+    print("  🔄 Synchronizing To-Fusion Skills to AI Agent Runtimes")
+    print(f"  ⚙️  Mode: {mode.upper()}")
     print("==========================================================")
     print(f"Discovered {len(skills)} skill(s) in {SKILLS_DIR}:")
     for s in skills:
@@ -311,12 +371,32 @@ def link_all_skills():
     success_count = 0
     total_links = 0
 
+    is_win = platform.system() == "Windows"
+
     for env_name, target_base in targets:
-        print(f"\n🔗 Linking into {env_name} ({target_base})...")
+        print(f"\n🔗 Syncing into {env_name} ({target_base})...")
         target_base.mkdir(parents=True, exist_ok=True)
         for s in skills:
             dest = target_base / s["dir_name"]
-            ok, method = create_dir_link(s["path"], dest)
+
+            # Determine whether to copy or link
+            use_copy = False
+            if mode == "copy":
+                use_copy = True
+            elif mode == "auto":
+                # Antigravity on Windows requires real directories to discover skills
+                if is_win and "Antigravity" in env_name:
+                    use_copy = True
+                else:
+                    use_copy = False
+            else:  # mode == "link"
+                use_copy = False
+
+            if use_copy:
+                ok, method = copy_skill_dir(s["path"], dest)
+            else:
+                ok, method = create_dir_link(s["path"], dest)
+
             total_links += 1
             if ok:
                 success_count += 1
@@ -325,7 +405,7 @@ def link_all_skills():
                 print(f"   ❌ {s['dir_name']} failed: {method}")
 
     print("\n----------------------------------------------------------")
-    print(f"🎉 Hot-link complete: {success_count}/{total_links} links established.")
+    print(f"🎉 Skill sync complete: {success_count}/{total_links} environments configured.")
     print("==========================================================")
     return success_count == total_links
 
@@ -463,7 +543,7 @@ def dev_push(message=None):
     print("==========================================================")
 
 
-def dev_pull():
+def dev_pull(mode="auto"):
     """
     Pull dev or active feature branch from origin on laptop/desktop,
     re-link all skills including newly created beta skills, and audit state.
@@ -501,8 +581,8 @@ def dev_pull():
         if pop_res.returncode != 0:
             print("⚠️  Note: Conflicts occurred when re-applying stash. Please resolve manually.")
 
-    # Hot-link all skills
-    link_all_skills()
+    # Hot-link / sync all skills
+    link_all_skills(mode=mode)
 
     # Beta skills check
     check_beta_skills()
@@ -541,14 +621,18 @@ def main():
     subparsers.add_parser("status", help="Show sync status, branch parity, and skill inventory")
 
     # link
-    subparsers.add_parser("link", help="Hot-link all skills (stable + beta) to Antigravity & Claude")
+    p_link = subparsers.add_parser("link", help="Synchronize all skills (stable + beta) to Antigravity & Claude")
+    p_link.add_argument("--mode", choices=["auto", "copy", "link"], default="auto", help="Sync mode: 'auto' (copies for Antigravity on Windows, symlinks elsewhere), 'copy', or 'link'")
+    p_link.add_argument("--copy", action="store_true", help="Force directory copy mode")
 
     # dev-push
     p_dev_push = subparsers.add_parser("dev-push", help="Commit and push dev/feature branch with laptop handoff receipt")
     p_dev_push.add_argument("-m", "--message", help="Optional commit message (defaults to auto WIP checkpoint)")
 
     # dev-pull
-    subparsers.add_parser("dev-pull", help="Pull latest dev/feature branch, hot-link skills, and audit beta skills")
+    p_dev_pull = subparsers.add_parser("dev-pull", help="Pull latest dev/feature branch, sync skills, and audit beta skills")
+    p_dev_pull.add_argument("--mode", choices=["auto", "copy", "link"], default="auto", help="Sync mode for skills")
+    p_dev_pull.add_argument("--copy", action="store_true", help="Force directory copy mode")
 
     # check-beta
     subparsers.add_parser("check-beta", help="Inspect and validate unreleased or beta skills")
@@ -563,6 +647,8 @@ def main():
     parser.add_argument("--dev-pull", action="store_true", help="Alias for 'dev-pull'")
     parser.add_argument("--check-beta", action="store_true", help="Alias for 'check-beta'")
     parser.add_argument("--handoff", action="store_true", help="Alias for 'handoff'")
+    parser.add_argument("--copy", action="store_true", help="Force directory copy mode for skills")
+    parser.add_argument("--mode", choices=["auto", "copy", "link"], default="auto", help="Sync mode: 'auto', 'copy', or 'link'")
 
     args = parser.parse_args()
 
@@ -584,15 +670,17 @@ def main():
         else:
             cmd = "status"
 
+    mode = "copy" if getattr(args, "copy", False) else getattr(args, "mode", "auto")
+
     if cmd == "status":
         print_status()
     elif cmd == "link":
-        link_all_skills()
+        link_all_skills(mode=mode)
     elif cmd == "dev-push":
         msg = getattr(args, "message", None)
         dev_push(message=msg)
     elif cmd == "dev-pull":
-        dev_pull()
+        dev_pull(mode=mode)
     elif cmd == "check-beta":
         check_beta_skills()
     elif cmd == "handoff":

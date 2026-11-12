@@ -69,7 +69,7 @@
         "tools/sync_manager.py"
       ],
       "dependencies": [],
-      "last_modified": "2026-11-07"
+      "last_modified": "2026-11-09"
     },
     "to-fusion-dev-sync": {
       "version": "1.0.0",
@@ -100,6 +100,6 @@
     "rules/fusion-autonomous-cad-rules.md",
     "rules/model-isolation-rules.md"
   ],
-  "last_updated": "2026-11-08T12:15:09.773142",
+  "last_updated": "2026-11-09T09:39:32.624995",
   "last_released": "2026-11-08"
 }

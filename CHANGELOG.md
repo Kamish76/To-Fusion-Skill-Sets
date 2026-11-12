@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.1.0] - 2026-11-08
 
 ### Fixed
+- **[to-fusion-sync]**: support directory copy mode on Windows to ensure Antigravity skill discovery
 - **[3mf-to-fusion]**: Fix extraction staging order, single MeshBody binding, component opacity, and multi-part handover cleanup
 ### Changed
 - **[core]**: Harden CI workflow with unit test execution, 3MF pipeline tests, dev branch trigger, and update packaging to v1.1.0
