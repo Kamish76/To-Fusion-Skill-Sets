@@ -155,3 +155,74 @@ Executing CAD animation scripts or GIF compilation on vanilla Windows systems or
 
 ### The Solution
 Implement the zero-dependency Windows Presentation Foundation (`System.Windows.Media.Imaging.GifBitmapEncoder`) with binary `NETSCAPE2.0` looping block and Graphic Control Extension (GCE) delay splicing (`compile_ping_pong_gif_powershell`). It compiles native looping GIF89a animations using built-in Windows PowerShell without installing any packages.
+
+---
+
+## 11. Coincident Boundary Tangencies & `ASM_INCONS_FACE` Extrude Failure
+
+### The Trap
+When modeling edge bevels, chamfer relief facets, or rebate grooves (e.g. cutting-edge relief on a surgical blade or knife belly), tracing the exact existing boundary curves in the cutting sketch causes Autodesk Shape Manager (ASM) kernel failure:
+`RuntimeError: 3 : Extrude / Compute Failed // ASM_INCONS_FACE - There was a problem combining geometry together. (problems can occur where faces and edges are nearly coincident)`.
+
+### The Solution: Robust Overlapping Boundaries
+Never re-trace existing boundary edges for extrude cut profiles. Instead, define a closed 2D loop consisting of:
+1. An **inner spline/line** defining the intended relief boundary on the face of the body.
+2. An **outer bounding curve/loop** extending $1.0\text{–}2.0\text{ mm}$ outside the body into empty space (air).
+Because the outer region is in empty space, the boolean operation cuts away *only* the material between the edge and the inner line with clean, non-tangent boolean overlap, completely avoiding coincident edge/face kernel traps:
+```python
+# Inner contour defines the bevel facet boundary on the solid face
+sp_inner = create_fitted_spline(sketch, inner_facet_pts)
+
+# Outer contour loops through empty air well outside the body boundary
+sp_outer = create_fitted_spline(sketch, outer_air_pts)
+
+# Connect endpoints to close the 2D loop cleanly
+sketch.sketchCurves.sketchLines.addByTwoPoints(sp_inner.endSketchPoint, sp_outer.startSketchPoint)
+sketch.sketchCurves.sketchLines.addByTwoPoints(sp_outer.endSketchPoint, sp_inner.startSketchPoint)
+
+# Extrude cut with clean non-tangent overlap
+ext_cut = comp.features.extrudeFeatures.createInput(sketch.profiles.item(0), adsk.fusion.FeatureOperations.CutFeatureOperation)
+ext_cut.participantBodies = [target_body]
+```
+
+---
+
+## 12. Continuous Perimeter Single-Spline Rail for Seamless Fillets
+
+### The Trap
+Segmenting organic, ergonomic, or clinical handles (e.g. scalpel spine, tail dome, belly) into separate line segments, arcs, and polylines creates tangent or curvature singularities at the segment junctions. Calling `comp.features.filletFeatures.add()` on the perimeter edges fails with edge singularity errors or produces fragmented fillets.
+
+### The Solution
+Synthesize the entire outer perimeter contour (top spine, rounded dome tail butt, lower belly, and throat) using a **single continuous $C^2$-smooth fitted spline** (e.g. 20–25 knots).
+- Because the outer boundary edge is a single continuous topological entity, Fusion 360's B-Rep kernel applies a continuous constant-radius edge fillet ($R = 0.35\text{–}0.50\text{ mm}$) around both $+Z$ and $-Z$ perimeter rails in a single feature with 0 errors.
+
+---
+
+## 13. Profile Area Filtering for Debossed Cartouche Badging & Island Relief
+
+### The Trap
+When modeling a debossed specification badge (e.g. a square cartouche with a numeral `3` or logo), passing `sketch.profiles` indiscriminately to `CutFeatureOperation` cuts the entire interior box flat, obliterating the background and destroying the relief contrast of the numeral.
+
+### The Solution: Profile Area Filtering
+Calculate the planar area of each sketch profile (`p.areaProperties().area`). The inner cavity background has the largest area ($> 70\%$ of the bounding box). Selectively cut *only* the outer thin frame border and the inner numeral strokes:
+```python
+max_area = max(p.areaProperties().area for p in sk_badge.profiles)
+profs_to_cut = adsk.core.ObjectCollection.create()
+for p in sk_badge.profiles:
+    if p.areaProperties().area < max_area * 0.70:
+        profs_to_cut.add(p)
+
+ext_badge = comp.features.extrudeFeatures.createInput(profs_to_cut, adsk.fusion.FeatureOperations.CutFeatureOperation)
+ext_badge.participantBodies = [target_body]
+```
+This leaves the island around the numeral raised, while the frame and the numeral strokes are crisply debossed.
+
+---
+
+## 14. Reverse-Face Coordinate Parity & Mirroring
+
+### The Trap
+Text or numerals sketched on the front $XY$ plane and cut through the back face ($-Z$) will appear horizontally inverted (mirrored) when viewed from the back face.
+
+### The Solution
+For engravings on the $-Z$ face, construct numeral and letter strokes with horizontal mirroring (`flip_x=True`) and verify sequence reading order along the coordinate axis ($+X$ vs $-X$) to ensure numbers read naturally left-to-right when viewed from the back.
