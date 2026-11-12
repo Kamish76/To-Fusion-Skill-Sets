@@ -88,6 +88,11 @@ Before processing files, verify that Autodesk Fusion 360 and its MCP server are 
    - Do NOT run extraction scripts or CAD commands.
    - Instruct the user to open Fusion 360, ensure the add-in is started, and open an active document.
 
+3. **Workspace & Shared Kernel Routing**:
+   - Primary repository: Active CAD monorepo or project root (`CAD_MONOREPO_ROOT` or current workspace).
+   - **Strict Isolation Guarantee:** Never create temporary files, scripts, or renders in the repository root or mutate `shared/`.
+   - Import universal CAD helpers from `shared/` (`cad_primitives`, `hardware_library`, `scene_animator`, `fusion_client`) and reverse-engineering utilities from `skills/3mf-to-fusion/scripts/` (`inspect_3mf`, `section_pack`, `conical_pip_calc`).
+
 ---
 
 ## Phase 1: Deep Extraction & Unique Part Inventory (`inspect_3mf.py`)

@@ -9,15 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
 
+## [1.1.0] - 2026-11-08
 
 ### Fixed
 - **[to-fusion-sync]**: support directory copy mode on Windows to ensure Antigravity skill discovery
 - **[3mf-to-fusion]**: Fix extraction staging order, single MeshBody binding, component opacity, and multi-part handover cleanup
 ### Changed
+- **[core]**: Harden CI workflow with unit test execution, 3MF pipeline tests, dev branch trigger, and update packaging to v1.1.0
 - **[3mf-to-fusion]**: Restructure pipeline into per-part phased feature ledger, batched X/Y/Z section packs, in-CAD isolated staging, and quantitative slice diffs
 - **[3mf-to-fusion]**: Establish In-CAD Mesh-First Staging & Multi-Perspective Metrology protocol with marketing photo ban and ghost overlay verification
 ### Added
+- **[to-fusion-animate]**: Add to-fusion-animate skill for scene-graph animation, ephemeral Kinematic_Stage collision checks, and ping-pong GIF compilation
 - **[to-fusion-dev-sync]**: Dedicated developer and beta-skills sync engine for dev branch laptop handoffs
 - **[to-fusion-sync]**: Universal repository and agent runtime sync engine across workstations
 - **[text-to-fusion]**: Added kinematic-linkages.md reference, Maker's Supply M3 BOM synthesis, ephemeral Kinematic_Stage 3D BRep collision sweep, and zero-dependency PowerShell .NET GIF89a compiler fallback
@@ -29,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Staging area for upcoming changes, improvements, and fixes.
 
 ---
+
 
 ## [1.0.0] - 2026-11-03
 

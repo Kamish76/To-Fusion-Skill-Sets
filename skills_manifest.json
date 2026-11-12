@@ -20,7 +20,8 @@
       "entrypoint": "skills/3mf-to-fusion/SKILL.md",
       "scripts": [
         "skills/3mf-to-fusion/scripts/inspect_3mf.py",
-        "skills/3mf-to-fusion/scripts/section_pack.py"
+        "skills/3mf-to-fusion/scripts/section_pack.py",
+        "skills/3mf-to-fusion/scripts/conical_pip_calc.py"
       ],
       "dependencies": [
         "numpy>=2.0.0",
@@ -80,11 +81,25 @@
       ],
       "dependencies": [],
       "last_modified": "2026-11-07"
+    },
+    "to-fusion-animate": {
+      "version": "1.0.0",
+      "name": "to-fusion-animate",
+      "description": "Animates Autodesk Fusion 360 assemblies, kinematic mechanisms, and exploded views via high-speed Matrix3D scene-graph transforms, runs ephemeral 3D BRep interference collision checks, and compiles looping GIF89a animations.",
+      "entrypoint": "skills/to-fusion-animate/SKILL.md",
+      "scripts": [
+        "skills/to-fusion-animate/scripts/animate_assembly.py"
+      ],
+      "dependencies": [
+        "pillow>=11.0.0"
+      ],
+      "last_modified": "2026-11-08"
     }
   },
   "rulesets": [
     "rules/fusion-autonomous-cad-rules.md",
     "rules/model-isolation-rules.md"
   ],
-  "last_updated": "2026-11-09T09:39:32.624995"
+  "last_updated": "2026-11-09T09:39:32.624995",
+  "last_released": "2026-11-08"
 }

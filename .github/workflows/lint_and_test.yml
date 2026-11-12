@@ -2,9 +2,9 @@ name: Lint and Validate To-Fusion Skills
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, dev ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, dev ]
 
 jobs:
   validate:
@@ -31,7 +31,7 @@ jobs:
 
       - name: Check Python Syntax & Compilation
         run: |
-          python -m compileall skills/ tools/
+          python -m compileall skills/ tools/ shared/ tests/
 
       - name: Verify Skills Structure & Manifest
         run: |
@@ -41,11 +41,20 @@ jobs:
               m = json.load(f)
           assert "skills" in m, "Manifest missing skills block"
           for name, data in m["skills"].items():
-              assert os.path.exists(data["entrypoint"]), f"Missing entrypoint {data[\"entrypoint\"]}"
+              ep = data["entrypoint"]
+              assert os.path.exists(ep), f"Missing entrypoint {ep}"
               for s in data["scripts"]:
                   assert os.path.exists(s), f"Missing script {s}"
           print("Skills manifest validation passed!")
           '
+
+      - name: Run Unit Tests
+        run: |
+          python -m unittest discover -s tests -v
+
+      - name: Run 3MF Metrology Pipeline Tests
+        run: |
+          python skills/3mf-to-fusion/tests/test_pipeline.py
 
       - name: Test Change Logger CLI
         run: |

@@ -43,5 +43,17 @@ class TestSharedLibrary(unittest.TestCase):
         self.assertAlmostEqual(smoothstep(0.0, 1.0, 1.0), 1.0)
         self.assertAlmostEqual(smoothstep(0.0, 1.0, 0.5), 0.5)
 
+    def test_animate_assembly_script_generator(self):
+        import importlib.util
+        script_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "skills", "to-fusion-animate", "scripts", "animate_assembly.py"))
+        spec = importlib.util.spec_from_file_location("animate_assembly", script_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        code = mod.generate_animation_script({}, "/tmp/test_frames", num_frames=15, width=640, height=480)
+        self.assertIn("def run(context):", code)
+        self.assertIn("num_frames = 15", code)
+        self.assertIn("/tmp/test_frames", code)
+        self.assertIn("vp.saveAsImageFile", code)
+
 if __name__ == "__main__":
     unittest.main()

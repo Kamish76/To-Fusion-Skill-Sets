@@ -55,6 +55,34 @@ graph TD
 - **Showroom Variant Pattern:** Stages experimental design options non-destructively in an isolated component without breaking timeline dependencies.
 - **High-Speed Animation:** Animates kinematic mechanisms and exploded views via direct `Occurrence.transform` Matrix3D updates.
 
+### 4. [`skills/to-fusion-animate`](skills/to-fusion-animate)
+*High-Speed Assembly Animation & Dynamic Kinematic Verification.*
+- **Zero Timeline Bloat:** Animates assemblies using direct 4x4 affine scene-graph transforms (`Occurrence.transform`) running at `0.005 s/update`.
+- **Ephemeral 3D Collision Sweep:** Runs intermediate 3D BRep interference checks ($s \in \{0.0, 0.25, 0.5, 0.75, 1.0\}$) inside an ephemeral `Kinematic_Stage` to detect mid-stroke collisions.
+- **Dual-Path GIF89a Compiler:** Compresses looping GIFs with Pillow (Lanczos/Floyd-Steinberg) or zero-dependency Windows PowerShell .NET fallback.
+
+### 5. [`skills/to-fusion-sync`](skills/to-fusion-sync) & [`to-fusion-dev-sync`](skills/to-fusion-dev-sync)
+*Universal Repository & Agent Runtime Synchronization Across Workstations.*
+- Verifies branch parity, stages WIP changes, hot-links unreleased skills into Antigravity (`~/.gemini/antigravity/skills/`) and Claude Code (`~/.claude/skills/`), and generates handoff receipts.
+
+---
+
+## 🧩 Shared CAD Kernel & In-Place Editing Suite
+
+To avoid prompt bloat, universal geometry algorithms, hardware specifications, and surgical editing tools are implemented as tested Python modules:
+
+- **`shared/` Kernel:**
+  - `cad_primitives.py`: Unit conversions (`cm`/`mm`), regular polygon/hex generator, driving parameter bindings.
+  - `hardware_library.py`: Parametric DIN 7991 M3 flat head countersunk screws, DIN 934 hex nuts, Maker's Supply M3 joint stackups.
+  - `scene_animator.py`: $SE(3)$ planar pivot matrix transforms (`make_yz_transform`), multi-frame 3D interference sweeps (`check_stage_interference`), dual-path ping-pong GIF compiler.
+  - `fusion_client.py`: Resilient Fusion MCP API caller and screenshot wrapper.
+- **`tools/fusion_editor/` (In-Place Surgical Editing):**
+  - `inspect_model.py`: Live introspection of active design tree, parameters, timeline health, and planar faces.
+  - `edit_parameter.py`: Tier 1 instantaneous parameter adjustments with zero timeline clutter and automatic rollback on failure.
+  - `rollback_edit.py`: Tier 2 safe timeline marker rollback for upstream sketch/feature redefinition.
+  - `append_feature.py`: Tier 3 downstream pocket/hole/chamfer feature appending without full rebuilds.
+  - `timeline_doctor.py`: Traverses timeline health states (`Healthy`, `Warning`, `Error`) with actionable diagnostic traces.
+
 ---
 
 ## 📜 Engineering Rulesets
@@ -179,23 +207,40 @@ To-Fusion-Skill-Sets/
 │   ├── CLAUDE.md                       # Drop-in rules for Claude Code
 │   ├── GEMINI.md                       # Drop-in rules for Antigravity
 │   └── CURSOR_RULES.md                 # Drop-in rules for Cursor / Windsurf
+├── shared/                             # Reusable CAD kernel & animation helpers
+│   ├── cad_primitives.py               # Unit conversions & geometric helpers
+│   ├── hardware_library.py             # Standardized fasteners & joint stack-ups
+│   ├── scene_animator.py               # High-speed transforms & GIF compiler
+│   └── fusion_client.py                # Fusion MCP execution wrapper
 ├── skills/                             # The core agent skills
 │   ├── 3mf-to-fusion/                  # Mesh reverse-engineering skill
 │   │   ├── SKILL.md
 │   │   ├── references/
-│   │   └── scripts/inspect_3mf.py
+│   │   └── scripts/ (inspect_3mf, section_pack, conical_pip_calc)
 │   ├── media-to-fusion/                # Computer vision metrology skill
 │   │   ├── SKILL.md
 │   │   ├── references/
 │   │   └── scripts/process_media.py
-│   └── text-to-fusion/                 # Natural language CAD synthesis skill
-│       ├── SKILL.md
-│       ├── references/
-│       └── scripts/scaffold_text_model.py
+│   ├── text-to-fusion/                 # Natural language CAD synthesis skill
+│   │   ├── SKILL.md
+│   │   ├── references/
+│   │   └── scripts/scaffold_text_model.py
+│   ├── to-fusion-animate/              # Assembly animation & kinematics skill
+│   │   ├── SKILL.md
+│   │   ├── references/
+│   │   └── scripts/animate_assembly.py
+│   ├── to-fusion-sync/                 # Cross-machine workstation sync skill
+│   └── to-fusion-dev-sync/             # Developer WIP & beta skills sync skill
+├── tests/                              # Automated test suites
+│   ├── test_fusion_editor.py
+│   ├── test_shared.py
+│   └── test_sync_manager.py
 ├── tools/                              # Automation & maintenance tools
+│   ├── fusion_editor/                  # Surgical in-place timeline editing tools
 │   ├── export_for_claude.py            # Claude Code / Claude Desktop exporter
 │   ├── log_change.py                   # Skill change audit & version bump CLI
-│   └── sync_local.sh                   # Local live-linking to Antigravity
+│   ├── scaffold_model.py               # CAD-ICM model folder generator
+│   └── sync_manager.py                 # Cross-platform live linking engine
 └── .github/
     └── workflows/
         └── lint_and_test.yml           # Automated syntax & manifest validation CI

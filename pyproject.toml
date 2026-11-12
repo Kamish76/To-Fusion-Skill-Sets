@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "to-fusion-skill-sets"
-version = "1.0.0"
+version = "1.1.0"
 description = "Autonomous Autodesk Fusion 360 parametric CAD skills and rulesets for AI agents (Antigravity, Claude, Cursor)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -42,8 +42,11 @@ dependencies = [
     "tifffile>=2025.1.1"
 ]
 
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["shared*", "tools*"]
+
 [project.scripts]
-inspect-3mf = "skills.3mf_to_fusion.scripts.inspect_3mf:main"
-process-media = "skills.media_to_fusion.scripts.process_media:main"
-scaffold-cad = "skills.text_to_fusion.scripts.scaffold_text_model:main"
+scaffold-cad = "tools.scaffold_model:main"
 log-cad-change = "tools.log_change:main"
+sync-cad-skills = "tools.sync_manager:main"
