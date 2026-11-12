@@ -98,6 +98,26 @@ def run(context):
         print(json.dumps({{"error": f"Planar face with normal '{{face_normal}}' not found on body '{{target_body.name}}'"}}))
         return
 
+    # 3.5. Internal Partition & Bulkhead Auditing
+    internal_partitions = []
+    if params.get("audit_partitions", False):
+        for f in target_body.faces:
+            if f.geometry.surfaceType == adsk.core.SurfaceTypes.PlaneSurfaceType:
+                pl = adsk.core.Plane.cast(f.geometry)
+                # Check for transverse internal walls along Y or X
+                if abs(pl.normal.y) > 0.9 and (f.boundingBox.maxPoint.x - f.boundingBox.minPoint.x) * 10.0 > 10.0:
+                    internal_partitions.append({{
+                        "axis": "Y",
+                        "coord_mm": round(f.boundingBox.minPoint.y * 10.0, 2),
+                        "width_mm": round((f.boundingBox.maxPoint.x - f.boundingBox.minPoint.x) * 10.0, 2)
+                    }})
+                elif abs(pl.normal.x) > 0.9 and (f.boundingBox.maxPoint.y - f.boundingBox.minPoint.y) * 10.0 > 10.0:
+                    internal_partitions.append({{
+                        "axis": "X",
+                        "coord_mm": round(f.boundingBox.minPoint.x * 10.0, 2),
+                        "width_mm": round((f.boundingBox.maxPoint.y - f.boundingBox.minPoint.y) * 10.0, 2)
+                    }})
+
     # 4. Execute Localized Feature Operation
     feature_created = None
     try:
@@ -154,7 +174,8 @@ def run(context):
         "body": target_body.name,
         "feature_name": feature_created.name if feature_created else None,
         "timeline_index": feature_created.timelineObject.index if feature_created else -1,
-        "timeline_count": design.timeline.count
+        "timeline_count": design.timeline.count,
+        "internal_partitions": internal_partitions
     }}
 
     print("APPEND_FEATURE_JSON_START")
@@ -194,10 +215,13 @@ def main():
     parser.add_argument("--body", default="Body1", help="Target body name")
     parser.add_argument("--op", default="pocket_cut", choices=["pocket_cut", "magnet_pocket"])
     parser.add_argument("--normal", default="+Z", help="Target face normal (+Z, -Z, +Y, -Y)")
+    parser.add_argument("--audit-partitions", action="store_true", help="Audit internal transverse partitions before cut")
     parser.add_argument("--params", default="{}", help="JSON string of feature parameters")
     args = parser.parse_args()
 
     params = json.loads(args.params)
+    if args.audit_partitions:
+        params["audit_partitions"] = True
     script = generate_append_script(args.comp, args.body, args.op, args.normal, params)
     print(script)
 

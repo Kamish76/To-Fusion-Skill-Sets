@@ -147,6 +147,17 @@ class TestFusionEditorTools(unittest.TestCase):
         self.assertIn("addTwoPointRectangle", script_pocket)
         self.assertNotIn("lines.add(", script_pocket)
 
+        # Test audit_partitions
+        script_audit = generate_append_script(
+            comp_name="TrayBody",
+            body_name="Body1",
+            op_type="pocket_cut",
+            face_normal="+Z",
+            op_params={"audit_partitions": True}
+        )
+        self.assertIn("Internal Partition & Bulkhead Auditing", script_audit)
+        self.assertIn("internal_partitions", script_audit)
+
     def test_hyphenated_model_index_and_ambiguity(self):
         from tools.scaffold_model import get_next_model_index
         from tools.log_model_edit import resolve_model_dir
