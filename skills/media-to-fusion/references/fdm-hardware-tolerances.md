@@ -38,3 +38,16 @@ Standardized non-printed hardware joint replacing fragile printed pins with off-
 | **Sliding Fit** | Removable organizer trays | **`0.40 mm` total** (`0.20 mm` per side) | Prevents binding in deep tray pockets |
 | **Snap-Fit / Interlock** | Latch tongues, H-clips | **`0.30 mm` total** (`0.15 mm` per side) | Snap cantilever beam thickness $1.2 - 1.6\text{ mm}$ |
 | **Press-Fit** | Captive hex nuts, magnets | **`0.15 - 0.20 mm` total** | Snug friction lock without splitting layers |
+
+---
+
+## 3. Surface Detailing & Micro-Engraving Printability Thresholds
+
+Fine engraved cosmetic and functional markings must be evaluated against additive manufacturing process limits (0.4mm nozzle FDM and standard SLA/DLP resin):
+
+| Feature Type | Modeled Geometry | Printability Verdict | Engineering Recommendation |
+| :--- | :--- | :---: | :--- |
+| **Micro-Graduations / Ruler Ticks** | $0.10\text{–}0.15\text{ mm}$ width, $0.12\text{ mm}$ depth | **FAIL (FDM & Resin)** | **Omit from 3D-printable geometry.** Micro-ticks fall below $0.40\text{ mm}$ nozzle resolution, triggering slicing anomalies, layer gaps, and nozzle stringing on FDM, and capillary resin pooling in DLP. Use post-print laser marking or pad printing. |
+| **Tactile Grip Flutes / Stadium Ribs** | $0.80\text{–}1.00\text{ mm}$ width, $0.25\text{–}0.35\text{ mm}$ depth | **PASS** | Excellent for ergonomics and grip. Prints cleanly as a single or double perimeter stroke without retractions. |
+| **Debossed Numerals & Cartouche Badges** | $1.4\text{–}2.5\text{ mm}$ height, $\ge 0.25\text{ mm}$ stroke width, $0.18\text{ mm}$ depth | **PASS** | Legible on both FDM (0.12mm layer height) and SLA/Resin. Ensure stroke thickness $\ge 0.25\text{ mm}$. |
+| **Ground Cutting Edge Relief Facets** | $0.10\text{–}0.15\text{ mm}$ bevel relief | **PASS** | Facet creates a distinct visual reflect line in CAD and slicers. Knife edges should terminate with at least $0.20\text{ mm}$ edge flat for FDM durability. |

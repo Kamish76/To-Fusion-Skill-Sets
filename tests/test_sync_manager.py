@@ -17,6 +17,7 @@ from tools.sync_manager import (
     discover_skills,
     parse_skill_metadata,
     create_dir_link,
+    copy_skill_dir,
     check_target_link,
     get_git_status,
     load_manifest,
@@ -81,10 +82,32 @@ class TestSyncManager(unittest.TestCase):
             # Check target link
             is_present, link_type = check_target_link(link_target)
             self.assertTrue(is_present)
-            self.assertIn(link_type, ("symlink", "junction", "folder", "present"))
+            self.assertIn(link_type, ("symlink", "junction", "folder", "present", "directory"))
 
             # Verify contents accessible through link
             self.assertTrue((link_target / "SKILL.md").exists())
+
+    def test_copy_skill_dir(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            source_dir = tmp_path / "source_skill"
+            source_dir.mkdir()
+            (source_dir / "SKILL.md").write_text("---\nname: temp-copy\n---\n", encoding="utf-8")
+            (source_dir / "helper.py").write_text("# helper\n", encoding="utf-8")
+
+            dest_target = tmp_path / "dest_skill"
+
+            # Copy skill dir
+            ok, method = copy_skill_dir(source_dir, dest_target)
+            self.assertTrue(ok, f"Copy failed: {method}")
+            self.assertEqual(method, "Directory Copy")
+
+            # Check target link
+            is_present, link_type = check_target_link(dest_target)
+            self.assertTrue(is_present)
+            self.assertEqual(link_type, "directory")
+            self.assertTrue((dest_target / "SKILL.md").exists())
+            self.assertTrue((dest_target / "helper.py").exists())
 
     def test_get_git_status_structure(self):
         st = get_git_status()

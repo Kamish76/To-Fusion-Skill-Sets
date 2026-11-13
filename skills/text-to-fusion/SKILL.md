@@ -97,7 +97,29 @@ When the user dictates modifications to an existing model ("make the slot 2mm wi
    - **Tier 2 (Timeline Rollback Surgery — < 200ms):** Roll marker to earlier feature via `tools/fusion_editor/rollback_edit.py`, adjust sketch/extrude inputs, and advance marker to end.
    - **Tier 3 (Localized Downstream Append — < 300ms):** Query target body face and append cut/pocket/magnet hole via `tools/fusion_editor/append_feature.py`.
    - **Tier 4 (Scoped Subassembly Swap):** Only replace the single child component occurrence if a radical topological overhaul is required.
-3. **Verify Health & Log Audit:**
+
+3. **Pre-Cut Boundary & Internal Partition Auditing:**
+   Before cutting vents, windows, or lattices into an exterior wall face, introspect `target_body.faces` to detect transverse partition walls, recessed pockets, and hardware bosses:
+   ```python
+   # Check for transverse internal walls along Y inside the target body
+   internal_partitions = [
+       f.boundingBox.minPoint.y * 10.0
+       for f in body.faces
+       if f.geometry.surfaceType == adsk.core.SurfaceTypes.PlaneSurfaceType
+       and abs(adsk.core.Plane.cast(f.geometry).normal.y) > 0.9
+       and (f.boundingBox.maxPoint.x - f.boundingBox.minPoint.x) * 10.0 > 10.0
+   ]
+   ```
+   Never let cut profiles clip through internal partition walls or pocket clearances.
+
+4. **Robust Profile Filtering & 1-Cut + 1-Mirror Rule:**
+   - **Analytical Area Filtering:** Calculate exact profile area beforehand ($A_{\text{cell}} = \frac{4 W_h h_v + 2 W_h \text{crown}}{100.0}\text{ cm}^2$) and collect only matching profiles via `filter_profiles_by_area()`:
+     ```python
+     profs = [p for p in sk.profiles if abs(p.areaProperties().area - A_cell) < 0.08]
+     ```
+   - **1-Cut + 1-Mirror Rule:** Bundle all lattice cells into a single `CutFeatureOperation`, followed immediately by a `MirrorFeature` across the center plane. This keeps timeline feature count minimal (2 features instead of 30+ separate extrusions), avoiding timeline lag and API timeouts.
+
+5. **Verify Health & Log Audit:**
    - Run `tools/fusion_editor/timeline_doctor.py` to ensure zero yellow/red timeline errors.
    - Run `python3 tools/log_model_edit.py --model <name> --prompt "<prompt>" --tier <1-4>` to record the prompt, delta, and ADR into the model's `TIMELINE.md` and `DECISIONS.md`.
 
